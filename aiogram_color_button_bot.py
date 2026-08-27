@@ -139,17 +139,17 @@ async def mychannels_cmd(message: Message):
 # ---------------------------------------------------------
 @dp.message(Command("newpost"))
 async def newpost(message: Message):
-    user_states[message.from_user.id] = {"step": "text", "buttons": []}
+    user_states[message.from_user.id] = {"step": "text", "buttons": [], "photo": None}
     await message.answer(
         "📝 Apna post banana shuru karte hain.\n\n"
-        "Pehle wo TEXT bhejo jo buttons ke UPAR dikhega:"
+        "TEXT bhejo (ya PHOTO bhejo caption ke saath) jo buttons ke UPAR dikhega:"
     )
 
 
 # ---------------------------------------------------------
 # Saara text/forwarded input yahi handle karta hai (jo commands nahi hain)
 # ---------------------------------------------------------
-@dp.message(F.text | F.forward_origin)
+@dp.message(F.text | F.forward_origin | F.photo)
 async def collect_input(message: Message):
     uid = message.from_user.id
     if uid not in user_states:
@@ -159,6 +159,9 @@ async def collect_input(message: Message):
     step = state["step"]
 
     if step == "add_channel":
+        if not (message.text or message.forward_origin):
+            await message.answer("⚠️ Channel username bhejo ya us channel se message forward karo.")
+            return
         try:
             chat = None
             # Private channel -> forward se seedha chat info milta hai
@@ -202,16 +205,31 @@ async def collect_input(message: Message):
         # message.html_text formatting preserve karta hai jo user ne apply ki ho
         # (bold, italic, spoiler, quote, code/copy-able block, wagera).
         # Poora text by-default BOLD rakha ja raha hai.
-        state["text"] = f"<b>{message.html_text}</b>"
+        if message.photo:
+            state["photo"] = message.photo[-1].file_id  # sabse badi resolution wali photo
+            caption = message.html_text or ""
+            state["text"] = f"<b>{caption}</b>" if caption else ""
+        elif message.text:
+            state["photo"] = None
+            state["text"] = f"<b>{message.html_text}</b>"
+        else:
+            await message.answer("⚠️ TEXT ya PHOTO (caption ke saath) bhejo:")
+            return
         state["step"] = "button_name"
         await message.answer("🔘 Ab pehle button ka NAAM bhejo (jaise: Website):")
 
     elif step == "button_name":
+        if not message.text:
+            await message.answer("⚠️ Button ka naam TEXT me bhejo:")
+            return
         state["current_name"] = message.text
         state["step"] = "button_url"
         await message.answer("🔗 Ab is button ka URL bhejo (https:// se shuru hona chahiye):")
 
     elif step == "button_url":
+        if not message.text:
+            await message.answer("⚠️ URL TEXT me bhejo:")
+            return
         url = message.text.strip()
         if not url.startswith("http"):
             await message.answer("⚠️ URL http:// ya https:// se shuru honi chahiye. Dobara bhejo:")
@@ -256,6 +274,15 @@ async def handle_color(callback: CallbackQuery):
     await callback.answer()
 
 
+async def send_final_post(chat_id, state, markup):
+    """State me photo hai to photo+caption bhejo, warna sirf text bhejo."""
+    if state.get("photo"):
+        await bot.send_photo(chat_id, photo=state["photo"], caption=state["text"],
+                              reply_markup=markup, parse_mode="HTML")
+    else:
+        await bot.send_message(chat_id, state["text"], reply_markup=markup, parse_mode="HTML")
+
+
 # ---------------------------------------------------------
 # Aur button add karna hai ya post finalize karna hai
 # ---------------------------------------------------------
@@ -292,7 +319,7 @@ async def handle_more(callback: CallbackQuery):
         )
     else:
         await callback.message.delete()
-        await bot.send_message(uid, state["text"], reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode="HTML")
+        await send_final_post(uid, state, InlineKeyboardMarkup(inline_keyboard=keyboard))
         await bot.send_message(
             uid,
             "👆 Aapka post ready hai! Seedha channel me post karwane ke liye "
@@ -319,11 +346,11 @@ async def handle_postto(callback: CallbackQuery):
 
     try:
         if target == "dm":
-            await bot.send_message(uid, state["text"], reply_markup=markup, parse_mode="HTML")
+            await send_final_post(uid, state, markup)
             await callback.message.edit_text("✅ Post aapko DM me bhej diya gaya.")
         else:
             chat_id = int(target)
-            await bot.send_message(chat_id, state["text"], reply_markup=markup, parse_mode="HTML")
+            await send_final_post(chat_id, state, markup)
             await callback.message.edit_text("✅ Post channel me successfully daal diya gaya!")
     except TelegramBadRequest as e:
         await callback.message.edit_text(
