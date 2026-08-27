@@ -125,8 +125,20 @@ async def main_menu(callback: CallbackQuery):
     kb = [
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
         [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
     ]
     await callback.message.edit_text("⚙️ Settings Menu", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "back_to_start")
+async def back_to_start(callback: CallbackQuery):
+    keyboard = [
+        [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
+        for row in BUTTONS
+    ]
+    keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
+    await callback.message.edit_text(MESSAGE_TEXT, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
     await callback.answer()
 
 
