@@ -24,7 +24,7 @@ import os
 import sys
 import asyncio
 import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
@@ -50,7 +50,7 @@ MESSAGE_TEXT = (
 # style options: "success" (green), "primary" (blue), "danger" (red), None (default)
 BUTTONS = [
     [("📢 Channel", "https://t.me/Deendayal_dhakadd", "success")],
-    [("👥 Group", "https://t.me/Deendayal_dhakadd", "primary")],
+    [("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
 ]
 # =========================================================
 
@@ -343,13 +343,19 @@ def run_dummy_server():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(b"Bot is running")
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
 
         def log_message(self, format, *args):
             pass
 
-    HTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
 
 
 async def main():
