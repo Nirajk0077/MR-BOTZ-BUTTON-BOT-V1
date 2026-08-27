@@ -52,6 +52,9 @@ BUTTONS = [
     [("📢 Channel", "https://t.me/Deendayal_dhakadd", "success")],
     [("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
 ]
+
+# /start ke neeche jo custom menu button dikhega, uska naam yaha se change karo
+MENU_BUTTON_TEXT = "⚙️ Settings"
 # =========================================================
 
 if not BOT_TOKEN:
@@ -70,6 +73,10 @@ user_states = {}
 CONNECTED_CHANNELS = {}
 
 channels_collection = None  # MongoDB connect hone ke baad set hoga
+
+# User ne apna caption format kya choose kiya hai (Quote/Mono/Spoiler/None)
+# Structure: { user_id: "quote" | "mono" | "spoiler" | None }
+USER_FORMAT = {}
 
 
 async def init_db():
@@ -106,7 +113,100 @@ async def start(message: Message):
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
         for row in BUTTONS
     ]
+    keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
     await message.answer(MESSAGE_TEXT, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+
+
+# ---------------------------------------------------------
+# Settings menu -- Connect Channel + Caption Format
+# ---------------------------------------------------------
+@dp.callback_query(F.data == "main_menu")
+async def main_menu(callback: CallbackQuery):
+    kb = [
+        [InlineKeyboardButton(text="🔗 Connect Channel", callback_data="menu_channels")],
+        [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format")],
+    ]
+    await callback.message.edit_text("⚙️ Settings Menu", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "menu_channels")
+async def menu_channels(callback: CallbackQuery):
+    uid = callback.from_user.id
+    channels = CONNECTED_CHANNELS.get(uid, [])
+    kb = [
+        [InlineKeyboardButton(text=f"📢 {c['title']}", callback_data=f"manage_channel_{c['id']}")]
+        for c in channels
+    ]
+    kb.append([InlineKeyboardButton(text="➕ Connect New Channel", callback_data="menu_addchannel")])
+    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
+    text = "🔗 Aapke connected channels:" if channels else "Abhi koi channel connect nahi hai."
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "menu_addchannel")
+async def menu_addchannel(callback: CallbackQuery):
+    user_states[callback.from_user.id] = {"step": "add_channel"}
+    await callback.message.edit_text(
+        "📢 Channel connect karne ke steps:\n\n"
+        "1) Bot ko us channel me ADMIN banao (post karne ki permission ke saath)\n\n"
+        "2a) PUBLIC channel ho: yaha uska username bhejo (jaise @mychannel)\n\n"
+        "2b) PRIVATE channel ho: us channel se koi bhi message yaha FORWARD kardo"
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("manage_channel_"))
+async def manage_channel(callback: CallbackQuery):
+    chat_id = int(callback.data.split("_", 2)[2])
+    uid = callback.from_user.id
+    channel = next((c for c in CONNECTED_CHANNELS.get(uid, []) if c["id"] == chat_id), None)
+    if not channel:
+        await callback.answer("Channel nahi mila.", show_alert=True)
+        return
+    kb = [
+        [InlineKeyboardButton(text="❌ Remove", callback_data=f"remove_channel_{chat_id}")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="menu_channels")],
+    ]
+    await callback.message.edit_text(f"📢 {channel['title']}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("remove_channel_"))
+async def remove_channel(callback: CallbackQuery):
+    chat_id = int(callback.data.split("_", 2)[2])
+    uid = callback.from_user.id
+    CONNECTED_CHANNELS[uid] = [c for c in CONNECTED_CHANNELS.get(uid, []) if c["id"] != chat_id]
+    if channels_collection is not None:
+        await channels_collection.delete_one({"user_id": uid, "channel_id": chat_id})
+    await callback.answer("✅ Channel remove ho gaya.", show_alert=True)
+    await menu_channels(callback)  # list dobara dikhao, updated
+
+
+@dp.callback_query(F.data == "menu_format")
+async def menu_format(callback: CallbackQuery):
+    current = USER_FORMAT.get(callback.from_user.id)
+    kb = [
+        [InlineKeyboardButton(text=("✅ " if current == "quote" else "") + "❝ Quote", callback_data="format_quote")],
+        [InlineKeyboardButton(text=("✅ " if current == "mono" else "") + "🔤 Mono", callback_data="format_mono")],
+        [InlineKeyboardButton(text=("✅ " if current == "spoiler" else "") + "🙈 Spoiler", callback_data="format_spoiler")],
+        [InlineKeyboardButton(text=("✅ " if current is None else "") + "⚪ Default (bold only)", callback_data="format_none")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")],
+    ]
+    await callback.message.edit_text(
+        "📝 /newpost me jo text bhejoge, wo is format me wrap hoga:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("format_"))
+async def set_format(callback: CallbackQuery):
+    choice = callback.data.split("_", 1)[1]  # quote / mono / spoiler / none
+    USER_FORMAT[callback.from_user.id] = None if choice == "none" else choice
+    await callback.answer("✅ Format set ho gaya!")
+    await menu_format(callback)  # updated tick mark ke saath dobara dikhao
 
 
 # ---------------------------------------------------------
@@ -204,14 +304,25 @@ async def collect_input(message: Message):
     if step == "text":
         # message.html_text formatting preserve karta hai jo user ne apply ki ho
         # (bold, italic, spoiler, quote, code/copy-able block, wagera).
-        # Poora text by-default BOLD rakha ja raha hai.
+        # Upar se, Settings me jo format (Quote/Mono/Spoiler) choose kiya hai wo bhi
+        # wrap hoga, aur poora text by-default BOLD rahega.
+        def apply_format(raw_html: str) -> str:
+            fmt = USER_FORMAT.get(uid)
+            if fmt == "quote":
+                raw_html = f"<blockquote>{raw_html}</blockquote>"
+            elif fmt == "mono":
+                raw_html = f"<code>{raw_html}</code>"
+            elif fmt == "spoiler":
+                raw_html = f"<tg-spoiler>{raw_html}</tg-spoiler>"
+            return f"<b>{raw_html}</b>"
+
         if message.photo:
             state["photo"] = message.photo[-1].file_id  # sabse badi resolution wali photo
             caption = message.html_text or ""
-            state["text"] = f"<b>{caption}</b>" if caption else ""
+            state["text"] = apply_format(caption) if caption else ""
         elif message.text:
             state["photo"] = None
-            state["text"] = f"<b>{message.html_text}</b>"
+            state["text"] = apply_format(message.html_text)
         else:
             await message.answer("⚠️ TEXT ya PHOTO (caption ke saath) bhejo:")
             return
