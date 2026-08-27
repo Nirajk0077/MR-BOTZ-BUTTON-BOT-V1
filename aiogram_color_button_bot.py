@@ -123,7 +123,7 @@ async def start(message: Message):
 @dp.callback_query(F.data == "main_menu")
 async def main_menu(callback: CallbackQuery):
     kb = [
-        [InlineKeyboardButton(text="🔗 Connect Channel", callback_data="menu_channels")],
+        [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
         [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format")],
     ]
     await callback.message.edit_text("⚙️ Settings Menu", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
@@ -138,9 +138,9 @@ async def menu_channels(callback: CallbackQuery):
         [InlineKeyboardButton(text=f"📢 {c['title']}", callback_data=f"manage_channel_{c['id']}")]
         for c in channels
     ]
-    kb.append([InlineKeyboardButton(text="➕ Connect New Channel", callback_data="menu_addchannel")])
+    kb.append([InlineKeyboardButton(text="➕ Connect New Channel/Group", callback_data="menu_addchannel")])
     kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
-    text = "🔗 Aapke connected channels:" if channels else "Abhi koi channel connect nahi hai."
+    text = "🔗 Aapke connected channels/groups:" if channels else "Abhi koi channel/group connect nahi hai."
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
 
@@ -149,10 +149,14 @@ async def menu_channels(callback: CallbackQuery):
 async def menu_addchannel(callback: CallbackQuery):
     user_states[callback.from_user.id] = {"step": "add_channel"}
     await callback.message.edit_text(
-        "📢 Channel connect karne ke steps:\n\n"
-        "1) Bot ko us channel me ADMIN banao (post karne ki permission ke saath)\n\n"
-        "2a) PUBLIC channel ho: yaha uska username bhejo (jaise @mychannel)\n\n"
-        "2b) PRIVATE channel ho: us channel se koi bhi message yaha FORWARD kardo"
+        "📢 Channel ya Group connect karne ke steps:\n\n"
+        "1) Bot ko add karo:\n"
+        "   • Channel me: bot ko ADMIN banao (post permission ke saath)\n"
+        "   • Group me: bot ko bas MEMBER ki tarah add karo, admin zaroori nahi\n\n"
+        "2) Yaha bhejo:\n"
+        "   • PUBLIC ho to uska username (jaise @mychannel)\n"
+        "   • PRIVATE ho to uski numeric ID (-100 se shuru hoti hai), "
+        "ya wahan se koi message yaha FORWARD kardo"
     )
     await callback.answer()
 
@@ -216,11 +220,14 @@ async def set_format(callback: CallbackQuery):
 async def addchannel_cmd(message: Message):
     user_states[message.from_user.id] = {"step": "add_channel"}
     await message.answer(
-        "📢 Channel connect karne ke steps:\n\n"
-        "1) Bot ko us channel me ADMIN banao (post karne ki permission ke saath)\n\n"
-        "2a) Agar channel PUBLIC hai: yaha uska username bhejo (jaise @mychannel)\n\n"
-        "2b) Agar channel PRIVATE hai: us channel me jaakar koi bhi ek message "
-        "yaha is chat me FORWARD kardo"
+        "📢 Channel ya Group connect karne ke steps:\n\n"
+        "1) Bot ko add karo:\n"
+        "   • Channel me: bot ko ADMIN banao (post permission ke saath)\n"
+        "   • Group me: bot ko bas MEMBER ki tarah add karo, admin zaroori nahi\n\n"
+        "2) Yaha bhejo:\n"
+        "   • PUBLIC ho to uska username (jaise @mychannel)\n"
+        "   • PRIVATE ho to uski numeric ID (-100 se shuru hoti hai), "
+        "ya wahan se koi message yaha FORWARD kardo"
     )
 
 
@@ -264,20 +271,42 @@ async def collect_input(message: Message):
             return
         try:
             chat = None
-            # Private channel -> forward se seedha chat info milta hai
-            if message.forward_origin and message.forward_origin.type == "channel":
-                chat = message.forward_origin.chat
-            else:
+            # Forward se seedha chat info milta hai (channel ya group dono ke liye)
+            if message.forward_origin:
+                origin = message.forward_origin
+                if origin.type == "channel":
+                    chat = origin.chat
+                elif origin.type == "chat":
+                    chat = origin.sender_chat
+
+            if chat is None:
+                if not message.text:
+                    await message.answer(
+                        "⚠️ Is forward se channel/group pata nahi chal paya (privacy ki wajah se). "
+                        "Username ya numeric ID TEXT me bhejo."
+                    )
+                    return
                 chat_ref = message.text.strip()
                 chat = await bot.get_chat(chat_ref)
 
             member = await bot.get_chat_member(chat.id, bot.id)
-            if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
-                await message.answer(
-                    "⚠️ Bot is channel me ADMIN nahi hai. Pehle admin banao "
-                    "(post karne ki permission ke saath), phir /addchannel se dobara try karo."
-                )
-                return
+
+            if chat.type == "channel":
+                # Channel me post karne ke liye bot ka ADMIN hona zaroori hai
+                if member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+                    await message.answer(
+                        "⚠️ Bot is Channel me ADMIN nahi hai. Pehle admin banao "
+                        "(post karne ki permission ke saath), phir dobara try karo."
+                    )
+                    return
+            else:
+                # Group/Supergroup me sirf member hona bhi kaafi hai (admin zaroori nahi)
+                if member.status in (ChatMemberStatus.LEFT, ChatMemberStatus.KICKED):
+                    await message.answer(
+                        "⚠️ Bot is Group me add nahi hai. Pehle bot ko group me add karo, "
+                        "phir dobara try karo."
+                    )
+                    return
 
             CONNECTED_CHANNELS.setdefault(uid, [])
             if not any(c["id"] == chat.id for c in CONNECTED_CHANNELS[uid]):
