@@ -50,8 +50,8 @@ MESSAGE_TEXT = (
 # Har button: (button_text, url, style)
 # style options: "success" (green), "primary" (blue), "danger" (red), None (default)
 BUTTONS = [
-    [("📢 Channel", "https://t.me/Deendayal_dhakadd", "success")],
-    [("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
+    [("📢 Channel", "https://t.me/Deendayal_dhakadd", "success"),
+     ("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
 ]
 
 # /start message ke saath image dikhani hai to PICS environment variable me
@@ -195,10 +195,10 @@ async def start(message: Message):
 async def main_menu(callback: CallbackQuery):
     kb = [
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
-        [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format")],
-        [InlineKeyboardButton(text="🖼️ Image Settings", callback_data="menu_image")],
-        [InlineKeyboardButton(text="🔲 Buttons Per Line", callback_data="menu_perrow")],
-        [InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
+        [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format"),
+         InlineKeyboardButton(text="🖼️ Image Settings", callback_data="menu_image")],
+        [InlineKeyboardButton(text="🔲 Buttons Per Line", callback_data="menu_perrow"),
+         InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
     ]
     await edit_smart(callback.message, "⚙️ Settings Menu", InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
