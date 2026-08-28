@@ -129,6 +129,24 @@ def build_channel_list(uid):
     return text, InlineKeyboardMarkup(inline_keyboard=kb)
 
 
+async def send_start_view(chat_id, prefix=""):
+    """/start jaisa screen bhejta hai (image + text + buttons), aage ek chhota
+    confirmation note bhi jod sakte ho (jaise 'Channel connect ho gaya!')."""
+    keyboard = [
+        [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
+        for row in BUTTONS
+    ]
+    keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+    caption = f"{prefix}\n\n{MESSAGE_TEXT}" if prefix else MESSAGE_TEXT
+
+    if START_IMAGES:
+        image = random.choice(START_IMAGES)
+        await bot.send_photo(chat_id, photo=image, caption=caption, reply_markup=markup)
+    else:
+        await bot.send_message(chat_id, caption, reply_markup=markup)
+
+
 async def init_db():
     """MongoDB se connect karo aur pehle se saved channels + settings memory me load karo."""
     global channels_collection, settings_collection
@@ -167,18 +185,7 @@ async def init_db():
 # ---------------------------------------------------------
 @dp.message(CommandStart())
 async def start(message: Message):
-    keyboard = [
-        [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
-        for row in BUTTONS
-    ]
-    keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
-    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-
-    if START_IMAGES:
-        image = random.choice(START_IMAGES)
-        await message.answer_photo(photo=image, caption=MESSAGE_TEXT, reply_markup=markup)
-    else:
-        await message.answer(MESSAGE_TEXT, reply_markup=markup)
+    await send_start_view(message.chat.id)
 
 
 # ---------------------------------------------------------
@@ -217,7 +224,11 @@ async def menu_channels(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "menu_addchannel")
 async def menu_addchannel(callback: CallbackQuery):
-    user_states[callback.from_user.id] = {"step": "add_channel"}
+    user_states[callback.from_user.id] = {
+        "step": "add_channel",
+        "steps_chat_id": callback.message.chat.id,
+        "steps_msg_id": callback.message.message_id,
+    }
     await edit_smart(
         callback.message,
         "📢 Channel ya Group connect karne ke steps:\n\n"
@@ -366,8 +377,7 @@ async def set_perrow(callback: CallbackQuery):
 # ---------------------------------------------------------
 @dp.message(Command("addchannel"))
 async def addchannel_cmd(message: Message):
-    user_states[message.from_user.id] = {"step": "add_channel"}
-    await message.answer(
+    sent = await message.answer(
         "📢 Channel ya Group connect karne ke steps:\n\n"
         "1) Bot ko add karo:\n"
         "   • Channel me: bot ko ADMIN banao (post permission ke saath)\n"
@@ -377,6 +387,11 @@ async def addchannel_cmd(message: Message):
         "   • PRIVATE ho to uski numeric ID (-100 se shuru hoti hai), "
         "ya wahan se koi message yaha FORWARD kardo"
     )
+    user_states[message.from_user.id] = {
+        "step": "add_channel",
+        "steps_chat_id": sent.chat.id,
+        "steps_msg_id": sent.message_id,
+    }
 
 
 @dp.message(Command("mychannels"))
@@ -468,11 +483,14 @@ async def collect_input(message: Message):
                     upsert=True
                 )
 
-            await message.answer(f"✅ Channel '{chat.title}' connect ho gaya!")
+            # Purana "steps" wala message hata do taaki clutter na ho
+            try:
+                await bot.delete_message(state.get("steps_chat_id", uid), state.get("steps_msg_id"))
+            except Exception:
+                pass
 
-            # Turant updated list bhi dikha do, alag se check karne ki zaroorat na ho
-            list_text, list_markup = build_channel_list(uid)
-            await message.answer(list_text, reply_markup=list_markup)
+            # Saaf start-view dikhao, upar ek chhota confirmation note ke saath
+            await send_start_view(uid, prefix=f"✅ '{chat.title}' connect ho gaya!")
         except Exception as e:
             await message.answer(
                 f"❌ Channel connect nahi ho paya.\n"
