@@ -78,6 +78,8 @@ if not BOT_TOKEN:
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
+BOT_USERNAME = ""  # startup par init_db se pehle fetch hoga
+
 # User ke chat state track karne ke liye (memory me, restart hone par reset ho jayega)
 user_states = {}
 
@@ -132,7 +134,21 @@ def build_channel_list(uid):
 async def send_start_view(chat_id, prefix=""):
     """/start jaisa screen bhejta hai (image + text + buttons), aage ek chhota
     confirmation note bhi jod sakte ho (jaise 'Channel connect ho gaya!')."""
-    keyboard = [
+    keyboard = []
+
+    if BOT_USERNAME:
+        # Telegram ka official deep-link: click karte hi khud group/channel
+        # choose karne ka dialog khul jata hai, bot admin ban jata hai.
+        keyboard.append([InlineKeyboardButton(
+            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰",
+            url=f"https://t.me/{BOT_USERNAME}?startgroup=true"
+        )])
+        keyboard.append([InlineKeyboardButton(
+            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ 🔰",
+            url=f"https://t.me/{BOT_USERNAME}?startchannel&admin=post_messages"
+        )])
+
+    keyboard += [
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
         for row in BUTTONS
     ]
@@ -197,8 +213,8 @@ async def main_menu(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
         [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format"),
          InlineKeyboardButton(text="🖼️ Image Settings", callback_data="menu_image")],
-        [InlineKeyboardButton(text="🔲 Buttons Per Line", callback_data="menu_perrow"),
-         InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
+        [InlineKeyboardButton(text="🔲 Buttons Per Line", callback_data="menu_perrow")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
     ]
     await edit_smart(callback.message, "⚙️ Settings Menu", InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
@@ -206,7 +222,17 @@ async def main_menu(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "back_to_start")
 async def back_to_start(callback: CallbackQuery):
-    keyboard = [
+    keyboard = []
+    if BOT_USERNAME:
+        keyboard.append([InlineKeyboardButton(
+            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰",
+            url=f"https://t.me/{BOT_USERNAME}?startgroup=true"
+        )])
+        keyboard.append([InlineKeyboardButton(
+            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ 🔰",
+            url=f"https://t.me/{BOT_USERNAME}?startchannel&admin=post_messages"
+        )])
+    keyboard += [
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
         for row in BUTTONS
     ]
@@ -699,8 +725,11 @@ def run_dummy_server():
 
 
 async def main():
+    global BOT_USERNAME
+    me = await bot.get_me()
+    BOT_USERNAME = me.username
     await init_db()
-    print("✅ Bot start ho raha hai...")
+    print(f"✅ Bot start ho raha hai... (@{BOT_USERNAME})")
     print("   Telegram par apne bot ko /start bhejo.")
     await dp.start_polling(bot)
 
