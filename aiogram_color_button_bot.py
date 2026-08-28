@@ -73,24 +73,30 @@ user_states = {}
 CONNECTED_CHANNELS = {}
 
 channels_collection = None  # MongoDB connect hone ke baad set hoga
+settings_collection = None  # MongoDB connect hone ke baad set hoga (Caption Format + Image Spoiler)
 
 # User ne apna caption format kya choose kiya hai (Quote/Mono/Spoiler/None)
 # Structure: { user_id: "quote" | "mono" | "spoiler" | None }
 USER_FORMAT = {}
 
+# User ne image spoiler (hide) chuna hai ya default
+# Structure: { user_id: True (spoiler) | False (default) }
+USER_IMAGE_SPOILER = {}
+
 
 async def init_db():
-    """MongoDB se connect karo aur pehle se saved channels memory me load karo."""
-    global channels_collection
+    """MongoDB se connect karo aur pehle se saved channels + settings memory me load karo."""
+    global channels_collection, settings_collection
     if not MONGO_URI:
-        print("⚠️ MONGO_URI nahi diya gaya - channels sirf memory me rahenge "
-              "(restart hone par dobara /addchannel karna padega).")
+        print("⚠️ MONGO_URI nahi diya gaya - channels/settings sirf memory me rahenge "
+              "(restart hone par dobara set karna padega).")
         return
 
     try:
         client = AsyncIOMotorClient(MONGO_URI)
         db = client["telegram_bot"]
         channels_collection = db["channels"]
+        settings_collection = db["user_settings"]
 
         count = 0
         async for doc in channels_collection.find():
@@ -98,10 +104,16 @@ async def init_db():
             CONNECTED_CHANNELS[doc["user_id"]].append({"id": doc["channel_id"], "title": doc["title"]})
             count += 1
 
-        print(f"✅ MongoDB connect ho gaya. {count} saved channel(s) load ho gaye.")
+        settings_count = 0
+        async for doc in settings_collection.find():
+            USER_FORMAT[doc["user_id"]] = doc.get("format")
+            USER_IMAGE_SPOILER[doc["user_id"]] = doc.get("image_spoiler", False)
+            settings_count += 1
+
+        print(f"✅ MongoDB connect ho gaya. {count} saved channel(s), {settings_count} user setting(s) load ho gaye.")
     except Exception as e:
         print(f"❌ MongoDB se connect nahi ho paya: {e}")
-        print("   Channels sirf memory me rahenge (restart pe reset honge).")
+        print("   Channels/settings sirf memory me rahenge (restart pe reset honge).")
 
 
 # ---------------------------------------------------------
@@ -125,6 +137,7 @@ async def main_menu(callback: CallbackQuery):
     kb = [
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
         [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format")],
+        [InlineKeyboardButton(text="🖼️ Image Settings", callback_data="menu_image")],
         [InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
     ]
     await callback.message.edit_text("⚙️ Settings Menu", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
@@ -219,10 +232,50 @@ async def menu_format(callback: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("format_"))
 async def set_format(callback: CallbackQuery):
+    uid = callback.from_user.id
     choice = callback.data.split("_", 1)[1]  # quote / mono / spoiler / none
-    USER_FORMAT[callback.from_user.id] = None if choice == "none" else choice
+    USER_FORMAT[uid] = None if choice == "none" else choice
+
+    if settings_collection is not None:
+        await settings_collection.update_one(
+            {"user_id": uid},
+            {"$set": {"user_id": uid, "format": USER_FORMAT[uid]}},
+            upsert=True
+        )
+
     await callback.answer("✅ Format set ho gaya!")
     await menu_format(callback)  # updated tick mark ke saath dobara dikhao
+
+
+@dp.callback_query(F.data == "menu_image")
+async def menu_image(callback: CallbackQuery):
+    is_spoiler = USER_IMAGE_SPOILER.get(callback.from_user.id, False)
+    kb = [
+        [InlineKeyboardButton(text=("✅ " if is_spoiler else "") + "🙈 Hide with Spoiler", callback_data="image_spoiler")],
+        [InlineKeyboardButton(text=("✅ " if not is_spoiler else "") + "🖼️ Default (visible)", callback_data="image_default")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")],
+    ]
+    await callback.message.edit_text(
+        "🖼️ /newpost me jo PHOTO bhejoge, wo is setting ke hisaab se post hogi:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.in_({"image_spoiler", "image_default"}))
+async def set_image_setting(callback: CallbackQuery):
+    uid = callback.from_user.id
+    USER_IMAGE_SPOILER[uid] = (callback.data == "image_spoiler")
+
+    if settings_collection is not None:
+        await settings_collection.update_one(
+            {"user_id": uid},
+            {"$set": {"user_id": uid, "image_spoiler": USER_IMAGE_SPOILER[uid]}},
+            upsert=True
+        )
+
+    await callback.answer("✅ Setting save ho gayi!")
+    await menu_image(callback)  # updated tick mark ke saath dobara dikhao
 
 
 # ---------------------------------------------------------
@@ -426,11 +479,13 @@ async def handle_color(callback: CallbackQuery):
     await callback.answer()
 
 
-async def send_final_post(chat_id, state, markup):
-    """State me photo hai to photo+caption bhejo, warna sirf text bhejo."""
+async def send_final_post(chat_id, state, markup, uid=None):
+    """State me photo hai to photo+caption bhejo, warna sirf text bhejo.
+    uid diya ho to uski spoiler-setting ke hisaab se photo hide/visible hogi."""
     if state.get("photo"):
+        spoiler = USER_IMAGE_SPOILER.get(uid, False) if uid is not None else False
         await bot.send_photo(chat_id, photo=state["photo"], caption=state["text"],
-                              reply_markup=markup, parse_mode="HTML")
+                              reply_markup=markup, parse_mode="HTML", has_spoiler=spoiler)
     else:
         await bot.send_message(chat_id, state["text"], reply_markup=markup, parse_mode="HTML")
 
@@ -471,7 +526,7 @@ async def handle_more(callback: CallbackQuery):
         )
     else:
         await callback.message.delete()
-        await send_final_post(uid, state, InlineKeyboardMarkup(inline_keyboard=keyboard))
+        await send_final_post(uid, state, InlineKeyboardMarkup(inline_keyboard=keyboard), uid=uid)
         await bot.send_message(
             uid,
             "👆 Aapka post ready hai! Seedha channel me post karwane ke liye "
@@ -498,11 +553,11 @@ async def handle_postto(callback: CallbackQuery):
 
     try:
         if target == "dm":
-            await send_final_post(uid, state, markup)
+            await send_final_post(uid, state, markup, uid=uid)
             await callback.message.edit_text("✅ Post aapko DM me bhej diya gaya.")
         else:
             chat_id = int(target)
-            await send_final_post(chat_id, state, markup)
+            await send_final_post(chat_id, state, markup, uid=uid)
             await callback.message.edit_text("✅ Post channel me successfully daal diya gaya!")
     except TelegramBadRequest as e:
         await callback.message.edit_text(
