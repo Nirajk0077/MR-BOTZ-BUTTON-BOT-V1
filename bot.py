@@ -24,6 +24,7 @@ import os
 import sys
 import asyncio
 import threading
+import random
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from aiogram import Bot, Dispatcher, F
@@ -51,6 +52,14 @@ MESSAGE_TEXT = (
 BUTTONS = [
     [("📢 Channel", "https://t.me/Deendayal_dhakadd", "success")],
     [("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
+]
+
+# /start message ke saath image dikhani hai to yaha URLs daalo (jitni chaho utni)
+# Har baar /start hone par inme se RANDOM ek image choose hogi.
+# Koi image nahi chahiye to list khaali rakho: START_IMAGES = []
+START_IMAGES = [
+    # "https://example.com/banner1.jpg",
+    # "https://example.com/banner2.jpg",
 ]
 
 # /start ke neeche jo custom menu button dikhega, uska naam yaha se change karo
@@ -92,6 +101,15 @@ def chunk_buttons(buttons, per_row):
     """Buttons ki flat list ko per_row size ke rows me todta hai."""
     per_row = per_row or 1
     return [buttons[i:i + per_row] for i in range(0, len(buttons), per_row)]
+
+
+async def edit_smart(message, text, markup=None):
+    """Message photo wala hai to caption edit karo, warna normal text edit karo.
+    (Zaroori hai kyunki /start ab image ke saath bhi ho sakta hai.)"""
+    if message.photo:
+        await message.edit_caption(caption=text, reply_markup=markup)
+    else:
+        await message.edit_text(text, reply_markup=markup)
 
 
 async def init_db():
@@ -137,7 +155,13 @@ async def start(message: Message):
         for row in BUTTONS
     ]
     keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
-    await message.answer(MESSAGE_TEXT, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    if START_IMAGES:
+        image = random.choice(START_IMAGES)
+        await message.answer_photo(photo=image, caption=MESSAGE_TEXT, reply_markup=markup)
+    else:
+        await message.answer(MESSAGE_TEXT, reply_markup=markup)
 
 
 # ---------------------------------------------------------
@@ -152,7 +176,7 @@ async def main_menu(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔲 Buttons Per Line", callback_data="menu_perrow")],
         [InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
     ]
-    await callback.message.edit_text("⚙️ Settings Menu", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await edit_smart(callback.message, "⚙️ Settings Menu", InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
 
 
@@ -163,7 +187,7 @@ async def back_to_start(callback: CallbackQuery):
         for row in BUTTONS
     ]
     keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
-    await callback.message.edit_text(MESSAGE_TEXT, reply_markup=InlineKeyboardMarkup(inline_keyboard=keyboard))
+    await edit_smart(callback.message, MESSAGE_TEXT, InlineKeyboardMarkup(inline_keyboard=keyboard))
     await callback.answer()
 
 
@@ -178,14 +202,15 @@ async def menu_channels(callback: CallbackQuery):
     kb.append([InlineKeyboardButton(text="➕ Connect New Channel/Group", callback_data="menu_addchannel")])
     kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
     text = "🔗 Aapke connected channels/groups:" if channels else "Abhi koi channel/group connect nahi hai."
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await edit_smart(callback.message, text, InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
 
 
 @dp.callback_query(F.data == "menu_addchannel")
 async def menu_addchannel(callback: CallbackQuery):
     user_states[callback.from_user.id] = {"step": "add_channel"}
-    await callback.message.edit_text(
+    await edit_smart(
+        callback.message,
         "📢 Channel ya Group connect karne ke steps:\n\n"
         "1) Bot ko add karo:\n"
         "   • Channel me: bot ko ADMIN banao (post permission ke saath)\n"
@@ -210,7 +235,7 @@ async def manage_channel(callback: CallbackQuery):
         [InlineKeyboardButton(text="❌ Remove", callback_data=f"remove_channel_{chat_id}")],
         [InlineKeyboardButton(text="⬅️ Back", callback_data="menu_channels")],
     ]
-    await callback.message.edit_text(f"📢 {channel['title']}", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await edit_smart(callback.message, f"📢 {channel['title']}", InlineKeyboardMarkup(inline_keyboard=kb))
     await callback.answer()
 
 
@@ -235,9 +260,10 @@ async def menu_format(callback: CallbackQuery):
         [InlineKeyboardButton(text=("✅ " if current is None else "") + "⚪ Default (bold only)", callback_data="format_none")],
         [InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")],
     ]
-    await callback.message.edit_text(
+    await edit_smart(
+        callback.message,
         "📝 /newpost me jo text bhejoge, wo is format me wrap hoga:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+        InlineKeyboardMarkup(inline_keyboard=kb)
     )
     await callback.answer()
 
@@ -267,9 +293,10 @@ async def menu_image(callback: CallbackQuery):
         [InlineKeyboardButton(text=("✅ " if not is_spoiler else "") + "🖼️ Default (visible)", callback_data="image_default")],
         [InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")],
     ]
-    await callback.message.edit_text(
+    await edit_smart(
+        callback.message,
         "🖼️ /newpost me jo PHOTO bhejoge, wo is setting ke hisaab se post hogi:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+        InlineKeyboardMarkup(inline_keyboard=kb)
     )
     await callback.answer()
 
@@ -299,9 +326,10 @@ async def menu_perrow(callback: CallbackQuery):
         kb.append([InlineKeyboardButton(text=f"{tick}{n} button{'s' if n > 1 else ''} per line", callback_data=f"perrow_{n}")])
     kb.append([InlineKeyboardButton(text=("✅ " if current is None else "") + "⚪ Default (1 per line)", callback_data="perrow_default")])
     kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
-    await callback.message.edit_text(
+    await edit_smart(
+        callback.message,
         "🔲 /newpost me buttons ek line me kitne dikhein?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+        InlineKeyboardMarkup(inline_keyboard=kb)
     )
     await callback.answer()
 
