@@ -116,6 +116,19 @@ async def edit_smart(message, text, markup=None):
         await message.edit_text(text, reply_markup=markup)
 
 
+def build_channel_list(uid):
+    """Connected channels ki list + Add/Back buttons banata hai. (text, markup) return karta hai."""
+    channels = CONNECTED_CHANNELS.get(uid, [])
+    kb = [
+        [InlineKeyboardButton(text=f"📢 {c['title']}", callback_data=f"manage_channel_{c['id']}")]
+        for c in channels
+    ]
+    kb.append([InlineKeyboardButton(text="➕ Connect New Channel/Group", callback_data="menu_addchannel")])
+    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
+    text = "🔗 Aapke connected channels/groups:" if channels else "Abhi koi channel/group connect nahi hai."
+    return text, InlineKeyboardMarkup(inline_keyboard=kb)
+
+
 async def init_db():
     """MongoDB se connect karo aur pehle se saved channels + settings memory me load karo."""
     global channels_collection, settings_collection
@@ -197,16 +210,8 @@ async def back_to_start(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "menu_channels")
 async def menu_channels(callback: CallbackQuery):
-    uid = callback.from_user.id
-    channels = CONNECTED_CHANNELS.get(uid, [])
-    kb = [
-        [InlineKeyboardButton(text=f"📢 {c['title']}", callback_data=f"manage_channel_{c['id']}")]
-        for c in channels
-    ]
-    kb.append([InlineKeyboardButton(text="➕ Connect New Channel/Group", callback_data="menu_addchannel")])
-    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
-    text = "🔗 Aapke connected channels/groups:" if channels else "Abhi koi channel/group connect nahi hai."
-    await edit_smart(callback.message, text, InlineKeyboardMarkup(inline_keyboard=kb))
+    text, markup = build_channel_list(callback.from_user.id)
+    await edit_smart(callback.message, text, markup)
     await callback.answer()
 
 
@@ -464,6 +469,10 @@ async def collect_input(message: Message):
                 )
 
             await message.answer(f"✅ Channel '{chat.title}' connect ho gaya!")
+
+            # Turant updated list bhi dikha do, alag se check karne ki zaroorat na ho
+            list_text, list_markup = build_channel_list(uid)
+            await message.answer(list_text, reply_markup=list_markup)
         except Exception as e:
             await message.answer(
                 f"❌ Channel connect nahi ho paya.\n"
