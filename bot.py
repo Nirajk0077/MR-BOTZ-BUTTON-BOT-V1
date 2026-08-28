@@ -300,10 +300,10 @@ async def remove_channel(callback: CallbackQuery):
 async def menu_format(callback: CallbackQuery):
     current = USER_FORMAT.get(callback.from_user.id)
     kb = [
-        [InlineKeyboardButton(text=("✅ " if current == "quote" else "") + "❝ Quote", callback_data="format_quote")],
-        [InlineKeyboardButton(text=("✅ " if current == "mono" else "") + "🔤 Mono", callback_data="format_mono")],
-        [InlineKeyboardButton(text=("✅ " if current == "spoiler" else "") + "🙈 Spoiler", callback_data="format_spoiler")],
         [InlineKeyboardButton(text=("✅ " if current is None else "") + "⚪ Default (bold only)", callback_data="format_none")],
+        [InlineKeyboardButton(text=("✅ " if current == "quote" else "") + "❝ Quote", callback_data="format_quote"),
+         InlineKeyboardButton(text=("✅ " if current == "mono" else "") + "🔤 Mono", callback_data="format_mono")],
+        [InlineKeyboardButton(text=("✅ " if current == "spoiler" else "") + "🙈 Spoiler", callback_data="format_spoiler")],
         [InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")],
     ]
     await edit_smart(
@@ -366,12 +366,17 @@ async def set_image_setting(callback: CallbackQuery):
 @dp.callback_query(F.data == "menu_perrow")
 async def menu_perrow(callback: CallbackQuery):
     current = USER_BUTTONS_PER_ROW.get(callback.from_user.id)
-    kb = []
-    for n in (1, 2, 3, 4):
+
+    def opt(n):
         tick = "✅ " if current == n else ""
-        kb.append([InlineKeyboardButton(text=f"{tick}{n} button{'s' if n > 1 else ''} per line", callback_data=f"perrow_{n}")])
-    kb.append([InlineKeyboardButton(text=("✅ " if current is None else "") + "⚪ Default (1 per line)", callback_data="perrow_default")])
-    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
+        return InlineKeyboardButton(text=f"{tick}{n} button{'s' if n > 1 else ''} per line", callback_data=f"perrow_{n}")
+
+    kb = [
+        [InlineKeyboardButton(text=("✅ " if current is None else "") + "⚪ Default (1 per line)", callback_data="perrow_default")],
+        [opt(1), opt(2)],
+        [opt(3), opt(4)],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")],
+    ]
     await edit_smart(
         callback.message,
         "🔲 /newpost me buttons ek line me kitne dikhein?",
