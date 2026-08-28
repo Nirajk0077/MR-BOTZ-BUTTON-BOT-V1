@@ -119,11 +119,11 @@ async def edit_smart(message, text, markup=None):
 def build_channel_list(uid):
     """Connected channels ki list + Add/Back buttons banata hai. (text, markup) return karta hai."""
     channels = CONNECTED_CHANNELS.get(uid, [])
-    kb = [
+    kb = [[InlineKeyboardButton(text="➕ Connect New Channel/Group", callback_data="menu_addchannel")]]
+    kb += [
         [InlineKeyboardButton(text=f"📢 {c['title']}", callback_data=f"manage_channel_{c['id']}")]
         for c in channels
     ]
-    kb.append([InlineKeyboardButton(text="➕ Connect New Channel/Group", callback_data="menu_addchannel")])
     kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
     text = "🔗 Aapke connected channels/groups:" if channels else "Abhi koi channel/group connect nahi hai."
     return text, InlineKeyboardMarkup(inline_keyboard=kb)
