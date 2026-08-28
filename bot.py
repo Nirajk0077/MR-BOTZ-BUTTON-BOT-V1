@@ -54,13 +54,17 @@ BUTTONS = [
     [("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
 ]
 
-# /start message ke saath image dikhani hai to yaha URLs daalo (jitni chaho utni)
+# /start message ke saath image dikhani hai to PICS environment variable me
+# URLs daalo (space se separate karke), jaise:
+#   https://example.com/1.jpg https://example.com/2.jpg
 # Har baar /start hone par inme se RANDOM ek image choose hogi.
-# Koi image nahi chahiye to list khaali rakho: START_IMAGES = []
-START_IMAGES = [
-    # "https://example.com/banner1.jpg",
-    # "https://example.com/banner2.jpg",
-]
+START_IMAGES = os.environ.get(
+    'PICS',
+    'https://i.ibb.co/ccWd1db5/photo-2026-01-04-09-51-53-7591442205638656024.jpg '
+    'https://i.ibb.co/38fQNmF/photo-2026-01-04-09-52-40-7591442536351137808.jpg '
+    'https://i.ibb.co/TBLBcL8j/photo-2026-01-04-09-52-16-7591442102559440916.jpg '
+    'https://i.ibb.co/1J0BK84k/photo-2026-01-04-09-52-26-7591442712444796944.jpg'
+).split()
 
 # /start ke neeche jo custom menu button dikhega, uska naam yaha se change karo
 MENU_BUTTON_TEXT = "⚙️ Settings"
