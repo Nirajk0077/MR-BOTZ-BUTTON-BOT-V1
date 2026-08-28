@@ -83,6 +83,16 @@ USER_FORMAT = {}
 # Structure: { user_id: True (spoiler) | False (default) }
 USER_IMAGE_SPOILER = {}
 
+# User ek line me kitne buttons chahta hai (1-4), None = default (1 per line)
+# Structure: { user_id: 1 | 2 | 3 | 4 | None }
+USER_BUTTONS_PER_ROW = {}
+
+
+def chunk_buttons(buttons, per_row):
+    """Buttons ki flat list ko per_row size ke rows me todta hai."""
+    per_row = per_row or 1
+    return [buttons[i:i + per_row] for i in range(0, len(buttons), per_row)]
+
 
 async def init_db():
     """MongoDB se connect karo aur pehle se saved channels + settings memory me load karo."""
@@ -108,6 +118,7 @@ async def init_db():
         async for doc in settings_collection.find():
             USER_FORMAT[doc["user_id"]] = doc.get("format")
             USER_IMAGE_SPOILER[doc["user_id"]] = doc.get("image_spoiler", False)
+            USER_BUTTONS_PER_ROW[doc["user_id"]] = doc.get("buttons_per_row")
             settings_count += 1
 
         print(f"✅ MongoDB connect ho gaya. {count} saved channel(s), {settings_count} user setting(s) load ho gaye.")
@@ -138,6 +149,7 @@ async def main_menu(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
         [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format")],
         [InlineKeyboardButton(text="🖼️ Image Settings", callback_data="menu_image")],
+        [InlineKeyboardButton(text="🔲 Buttons Per Line", callback_data="menu_perrow")],
         [InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")],
     ]
     await callback.message.edit_text("⚙️ Settings Menu", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
@@ -276,6 +288,40 @@ async def set_image_setting(callback: CallbackQuery):
 
     await callback.answer("✅ Setting save ho gayi!")
     await menu_image(callback)  # updated tick mark ke saath dobara dikhao
+
+
+@dp.callback_query(F.data == "menu_perrow")
+async def menu_perrow(callback: CallbackQuery):
+    current = USER_BUTTONS_PER_ROW.get(callback.from_user.id)
+    kb = []
+    for n in (1, 2, 3, 4):
+        tick = "✅ " if current == n else ""
+        kb.append([InlineKeyboardButton(text=f"{tick}{n} button{'s' if n > 1 else ''} per line", callback_data=f"perrow_{n}")])
+    kb.append([InlineKeyboardButton(text=("✅ " if current is None else "") + "⚪ Default (1 per line)", callback_data="perrow_default")])
+    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
+    await callback.message.edit_text(
+        "🔲 /newpost me buttons ek line me kitne dikhein?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("perrow_"))
+async def set_perrow(callback: CallbackQuery):
+    uid = callback.from_user.id
+    value = callback.data.split("_", 1)[1]  # "1"/"2"/"3"/"4"/"default"
+    per_row = None if value == "default" else int(value)
+    USER_BUTTONS_PER_ROW[uid] = per_row
+
+    if settings_collection is not None:
+        await settings_collection.update_one(
+            {"user_id": uid},
+            {"$set": {"user_id": uid, "buttons_per_row": per_row}},
+            upsert=True
+        )
+
+    await callback.answer("✅ Setting save ho gayi!")
+    await menu_perrow(callback)  # updated tick mark ke saath dobara dikhao
 
 
 # ---------------------------------------------------------
@@ -507,9 +553,10 @@ async def handle_more(callback: CallbackQuery):
         await callback.answer()
         return
 
+    per_row = USER_BUTTONS_PER_ROW.get(uid)
     keyboard = [
-        [InlineKeyboardButton(text=name, url=url, style=style)]
-        for name, url, style in state["buttons"]
+        [InlineKeyboardButton(text=name, url=url, style=style) for name, url, style in row]
+        for row in chunk_buttons(state["buttons"], per_row)
     ]
     state["final_keyboard"] = keyboard
     channels = CONNECTED_CHANNELS.get(uid, [])
