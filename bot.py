@@ -246,9 +246,16 @@ async def menu_addchannel(callback: CallbackQuery):
         "2) Yaha bhejo:\n"
         "   • PUBLIC ho to uska username (jaise @mychannel)\n"
         "   • PRIVATE ho to uski numeric ID (-100 se shuru hoti hai), "
-        "ya wahan se koi message yaha FORWARD kardo"
+        "ya wahan se koi message yaha FORWARD kardo",
+        InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back", callback_data="cancel_addchannel")]])
     )
     await callback.answer()
+
+
+@dp.callback_query(F.data == "cancel_addchannel")
+async def cancel_addchannel(callback: CallbackQuery):
+    user_states.pop(callback.from_user.id, None)
+    await back_to_start(callback)
 
 
 @dp.callback_query(F.data.startswith("manage_channel_"))
