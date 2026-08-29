@@ -60,10 +60,7 @@ BUTTONS = [
 # Har baar /start hone par inme se RANDOM ek image choose hogi.
 START_IMAGES = os.environ.get(
     'PICS',
-    'https://i.ibb.co/ccWd1db5/photo-2026-01-04-09-51-53-7591442205638656024.jpg '
-    'https://i.ibb.co/38fQNmF/photo-2026-01-04-09-52-40-7591442536351137808.jpg '
-    'https://i.ibb.co/TBLBcL8j/photo-2026-01-04-09-52-16-7591442102559440916.jpg '
-    'https://i.ibb.co/1J0BK84k/photo-2026-01-04-09-52-26-7591442712444796944.jpg'
+    'https://i.ibb.co/wNcw3tMY/photo-2026-08-29-04-38-12-7679308298687873056.jpg '
 ).split()
 
 # /start ke neeche jo custom menu button dikhega, uska naam yaha se change karo
