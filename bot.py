@@ -126,7 +126,7 @@ def build_channel_list(uid):
         [InlineKeyboardButton(text=f"📢 {c['title']}", callback_data=f"manage_channel_{c['id']}")]
         for c in channels
     ]
-    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="main_menu")])
+    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")])
     text = "🔗 Aapke connected channels/groups:" if channels else "Abhi koi channel/group connect nahi hai."
     return text, InlineKeyboardMarkup(inline_keyboard=kb)
 
@@ -134,19 +134,9 @@ def build_channel_list(uid):
 async def send_start_view(chat_id, prefix=""):
     """/start jaisa screen bhejta hai (image + text + buttons), aage ek chhota
     confirmation note bhi jod sakte ho (jaise 'Channel connect ho gaya!')."""
-    keyboard = []
-
-    if BOT_USERNAME:
-        # Telegram ka official deep-link: click karte hi khud group/channel
-        # choose karne ka dialog khul jata hai, bot admin ban jata hai.
-        keyboard.append([InlineKeyboardButton(
-            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰",
-            url=f"https://t.me/{BOT_USERNAME}?startgroup=true"
-        )])
-        keyboard.append([InlineKeyboardButton(
-            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ 🔰",
-            url=f"https://t.me/{BOT_USERNAME}?startchannel&admin=post_messages"
-        )])
+    keyboard = [
+        [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
+    ]
 
     keyboard += [
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
@@ -210,7 +200,6 @@ async def start(message: Message):
 @dp.callback_query(F.data == "main_menu")
 async def main_menu(callback: CallbackQuery):
     kb = [
-        [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
         [InlineKeyboardButton(text="📝 Caption Format", callback_data="menu_format"),
          InlineKeyboardButton(text="🖼️ Image Settings", callback_data="menu_image")],
         [InlineKeyboardButton(text="🔲 Buttons Per Line", callback_data="menu_perrow")],
@@ -222,16 +211,9 @@ async def main_menu(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "back_to_start")
 async def back_to_start(callback: CallbackQuery):
-    keyboard = []
-    if BOT_USERNAME:
-        keyboard.append([InlineKeyboardButton(
-            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ɢʀᴏᴜᴘ 🔰",
-            url=f"https://t.me/{BOT_USERNAME}?startgroup=true"
-        )])
-        keyboard.append([InlineKeyboardButton(
-            text="🔰 ᴀᴅᴅ ᴍᴇ ᴛᴏ ʏᴏᴜʀ ᴄʜᴀɴɴᴇʟ 🔰",
-            url=f"https://t.me/{BOT_USERNAME}?startchannel&admin=post_messages"
-        )])
+    keyboard = [
+        [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
+    ]
     keyboard += [
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
         for row in BUTTONS
