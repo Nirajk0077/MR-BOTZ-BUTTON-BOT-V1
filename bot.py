@@ -42,14 +42,24 @@ MONGO_URI = os.environ.get("MONGO_URI", "")   # MongoDB connection string (optio
 
 import html
 
-# Saara customizable text/buttons/content script.py se aata hai.
-# Text/buttons change karne ke liye bot.py nahi, script.py edit karo.
-from script import MESSAGE_TEXT, BUTTONS, DEFAULT_PICS, MENU_BUTTON_TEXT, ABOUT_TEXT
+# Saara customizable TEXT script.py se aata hai.
+# Text change karne ke liye bot.py nahi, script.py edit karo.
+from script import MESSAGE_TEXT, MENU_BUTTON_TEXT, ABOUT_TEXT
+
+# Har button: (button_text, url, style)
+# style options: "success" (green), "primary" (blue), "danger" (red), None (default)
+BUTTONS = [
+    [("📢 Channel", "https://t.me/Deendayal_dhakadd", "success"),
+     ("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
+]
 
 # /start message ke saath image dikhani hai to PICS environment variable me
 # URL daalo. Multiple URLs (space se separate) doge to har baar random ek choose hogi;
 # ek hi URL doge to hamesha wahi image dikhegi.
-START_IMAGES = os.environ.get('PICS', DEFAULT_PICS).split()
+START_IMAGES = os.environ.get(
+    'PICS',
+    'https://i.ibb.co/wNcw3tMY/photo-2026-08-29-04-38-12-7679308298687873056.jpg'
+).split()
 # =========================================================
 
 if not BOT_TOKEN:
