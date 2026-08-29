@@ -44,8 +44,10 @@ import html
 
 # Apna khud ka text yaha likho (emoji bhi daal sakte ho). HTML tags support hain
 # (<b>bold</b>, <i>italic</i>, <blockquote>quote</blockquote>, wagera).
+# {user} ki jagah automatically us insaan ka naam (clickable mention) aa jayega
+# jo /start kar raha hai.
 MESSAGE_TEXT = (
-    "👋 <b>Namaste! Main Deendayal Button Bot hoon</b>\n\n"
+    "👋 <b>Namaste {user}!</b>\n\n"
     "🔘 Custom colored buttons wale posts banao\n"
     "📢 Multiple Channels/Groups me seedha post karo\n"
     "🖼️ Photo ke saath spoiler ya normal post karo\n"
@@ -135,9 +137,10 @@ def build_channel_list(uid):
     return text, InlineKeyboardMarkup(inline_keyboard=kb)
 
 
-async def send_start_view(chat_id, prefix=""):
+async def send_start_view(chat_id, prefix="", user=None):
     """/start jaisa screen bhejta hai (image + text + buttons), aage ek chhota
-    confirmation note bhi jod sakte ho (jaise 'Channel connect ho gaya!')."""
+    confirmation note bhi jod sakte ho (jaise 'Channel connect ho gaya!').
+    'user' diya ho to uska clickable naam {user} ki jagah dikhega."""
     keyboard = [
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
     ]
@@ -148,8 +151,15 @@ async def send_start_view(chat_id, prefix=""):
     ]
     keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+    if user is not None:
+        mention = f'<a href="tg://user?id={user.id}">{html.escape(user.full_name)}</a>'
+    else:
+        mention = ""
+    body = MESSAGE_TEXT.format(user=mention)
+
     safe_prefix = html.escape(prefix) if prefix else ""
-    caption = f"{safe_prefix}\n\n{MESSAGE_TEXT}" if safe_prefix else MESSAGE_TEXT
+    caption = f"{safe_prefix}\n\n{body}" if safe_prefix else body
 
     if START_IMAGES:
         image = random.choice(START_IMAGES)
@@ -196,7 +206,7 @@ async def init_db():
 # ---------------------------------------------------------
 @dp.message(CommandStart())
 async def start(message: Message):
-    await send_start_view(message.chat.id)
+    await send_start_view(message.chat.id, user=message.from_user)
 
 
 # ---------------------------------------------------------
@@ -224,7 +234,9 @@ async def back_to_start(callback: CallbackQuery):
         for row in BUTTONS
     ]
     keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
-    await edit_smart(callback.message, MESSAGE_TEXT, InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode="HTML")
+    mention = f'<a href="tg://user?id={callback.from_user.id}">{html.escape(callback.from_user.full_name)}</a>'
+    body = MESSAGE_TEXT.format(user=mention)
+    await edit_smart(callback.message, body, InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode="HTML")
     await callback.answer()
 
 
@@ -515,7 +527,7 @@ async def collect_input(message: Message):
                 pass
 
             # Saaf start-view dikhao, upar ek chhota confirmation note ke saath
-            await send_start_view(uid, prefix=f"✅ '{chat.title}' connect ho gaya!")
+            await send_start_view(uid, prefix=f"✅ '{chat.title}' connect ho gaya!", user=message.from_user)
         except Exception as e:
             await message.answer(
                 f"❌ Channel connect nahi ho paya.\n"
