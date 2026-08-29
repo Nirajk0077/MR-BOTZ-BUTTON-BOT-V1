@@ -40,11 +40,19 @@ from motor.motor_asyncio import AsyncIOMotorClient
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")   # @BotFather se
 MONGO_URI = os.environ.get("MONGO_URI", "")   # MongoDB connection string (optional par recommended)
 
-# Apna khud ka text yaha likho (emoji bhi daal sakte ho)
+import html
+
+# Apna khud ka text yaha likho (emoji bhi daal sakte ho). HTML tags support hain
+# (<b>bold</b>, <i>italic</i>, <blockquote>quote</blockquote>, wagera).
 MESSAGE_TEXT = (
-    "👋 Namaste!\n\n"
-    "Latest updates, movies aur exclusive content ke liye "
-    "neeche diye buttons se hamare Channel aur Group se judo 👇"
+    "👋 <b>Namaste! Main Deendayal Button Bot hoon</b>\n\n"
+    "🔘 Custom colored buttons wale posts banao\n"
+    "📢 Multiple Channels/Groups me seedha post karo\n"
+    "🖼️ Photo ke saath spoiler ya normal post karo\n"
+    "📝 Quote, Mono, Spoiler jaisi caption formatting\n"
+    "⚡ Fast aur reliable\n\n"
+    "Apna post banane ke liye ye command bhejo:\n"
+    "<blockquote>/newpost</blockquote>"
 )
 
 # Har button: (button_text, url, style)
@@ -105,13 +113,13 @@ def chunk_buttons(buttons, per_row):
     return [buttons[i:i + per_row] for i in range(0, len(buttons), per_row)]
 
 
-async def edit_smart(message, text, markup=None):
+async def edit_smart(message, text, markup=None, parse_mode=None):
     """Message photo wala hai to caption edit karo, warna normal text edit karo.
     (Zaroori hai kyunki /start ab image ke saath bhi ho sakta hai.)"""
     if message.photo:
-        await message.edit_caption(caption=text, reply_markup=markup)
+        await message.edit_caption(caption=text, reply_markup=markup, parse_mode=parse_mode)
     else:
-        await message.edit_text(text, reply_markup=markup)
+        await message.edit_text(text, reply_markup=markup, parse_mode=parse_mode)
 
 
 def build_channel_list(uid):
@@ -140,13 +148,14 @@ async def send_start_view(chat_id, prefix=""):
     ]
     keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
-    caption = f"{prefix}\n\n{MESSAGE_TEXT}" if prefix else MESSAGE_TEXT
+    safe_prefix = html.escape(prefix) if prefix else ""
+    caption = f"{safe_prefix}\n\n{MESSAGE_TEXT}" if safe_prefix else MESSAGE_TEXT
 
     if START_IMAGES:
         image = random.choice(START_IMAGES)
-        await bot.send_photo(chat_id, photo=image, caption=caption, reply_markup=markup)
+        await bot.send_photo(chat_id, photo=image, caption=caption, reply_markup=markup, parse_mode="HTML")
     else:
-        await bot.send_message(chat_id, caption, reply_markup=markup)
+        await bot.send_message(chat_id, caption, reply_markup=markup, parse_mode="HTML")
 
 
 async def init_db():
@@ -215,7 +224,7 @@ async def back_to_start(callback: CallbackQuery):
         for row in BUTTONS
     ]
     keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
-    await edit_smart(callback.message, MESSAGE_TEXT, InlineKeyboardMarkup(inline_keyboard=keyboard))
+    await edit_smart(callback.message, MESSAGE_TEXT, InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode="HTML")
     await callback.answer()
 
 
