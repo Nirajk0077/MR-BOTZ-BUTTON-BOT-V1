@@ -27,9 +27,9 @@ import threading
 import random
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, TelegramObject
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -507,6 +507,16 @@ async def collect_input(message: Message):
                         "phir dobara try karo."
                     )
                     return
+
+            # Connect karne wala USER khud us channel/group me ADMIN hona chahiye
+            # (warna koi bhi random user kisi bhi channel/group connect kar sakta tha)
+            user_member = await bot.get_chat_member(chat.id, uid)
+            if user_member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+                await message.answer(
+                    "⚠️ Aap is Channel/Group me ADMIN nahi hain. Sirf admin hi apna "
+                    "channel/group is bot se connect kar sakte hain."
+                )
+                return
 
             CONNECTED_CHANNELS.setdefault(uid, [])
             if not any(c["id"] == chat.id for c in CONNECTED_CHANNELS[uid]):
