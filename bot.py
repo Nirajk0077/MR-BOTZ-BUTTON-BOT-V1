@@ -42,38 +42,14 @@ MONGO_URI = os.environ.get("MONGO_URI", "")   # MongoDB connection string (optio
 
 import html
 
-# Apna khud ka text yaha likho (emoji bhi daal sakte ho). HTML tags support hain
-# (<b>bold</b>, <i>italic</i>, <blockquote>quote</blockquote>, wagera).
-# {user} ki jagah automatically us insaan ka naam (clickable mention) aa jayega
-# jo /start kar raha hai.
-MESSAGE_TEXT = (
-    "👋 <b>Namaste {user}!</b>\n\n"
-    "🔘 Custom colored buttons wale posts banao\n"
-    "📢 Multiple Channels/Groups me seedha post karo\n"
-    "🖼️ Photo ke saath spoiler ya normal post karo\n"
-    "📝 Quote, Mono, Spoiler jaisi caption formatting\n"
-    "⚡ Fast aur reliable\n\n"
-    "Apna post banane ke liye ye command bhejo:\n"
-    "<blockquote>/newpost</blockquote>"
-)
-
-# Har button: (button_text, url, style)
-# style options: "success" (green), "primary" (blue), "danger" (red), None (default)
-BUTTONS = [
-    [("📢 Channel", "https://t.me/Deendayal_dhakadd", "success"),
-     ("👥 Group", "https://t.me/Deendayal_dhakadd", "success")],
-]
+# Saara customizable text/buttons/content script.py se aata hai.
+# Text/buttons change karne ke liye bot.py nahi, script.py edit karo.
+from script import MESSAGE_TEXT, BUTTONS, DEFAULT_PICS, MENU_BUTTON_TEXT, ABOUT_TEXT
 
 # /start message ke saath image dikhani hai to PICS environment variable me
 # URL daalo. Multiple URLs (space se separate) doge to har baar random ek choose hogi;
 # ek hi URL doge to hamesha wahi image dikhegi.
-START_IMAGES = os.environ.get(
-    'PICS',
-    'https://i.ibb.co/wNcw3tMY/photo-2026-08-29-04-38-12-7679308298687873056.jpg'
-).split()
-
-# /start ke neeche jo custom menu button dikhega, uska naam yaha se change karo
-MENU_BUTTON_TEXT = "⚙️ Settings"
+START_IMAGES = os.environ.get('PICS', DEFAULT_PICS).split()
 # =========================================================
 
 if not BOT_TOKEN:
@@ -149,7 +125,10 @@ async def send_start_view(chat_id, prefix="", user=None):
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
         for row in BUTTONS
     ]
-    keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
+    keyboard.append([
+        InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu"),
+        InlineKeyboardButton(text="ℹ️ About", callback_data="show_about"),
+    ])
     markup = InlineKeyboardMarkup(inline_keyboard=keyboard)
 
     if user is not None:
@@ -212,6 +191,13 @@ async def start(message: Message):
 # ---------------------------------------------------------
 # Settings menu -- Connect Channel + Caption Format
 # ---------------------------------------------------------
+@dp.callback_query(F.data == "show_about")
+async def show_about(callback: CallbackQuery):
+    kb = [[InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_start")]]
+    await edit_smart(callback.message, ABOUT_TEXT, InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
+    await callback.answer()
+
+
 @dp.callback_query(F.data == "main_menu")
 async def main_menu(callback: CallbackQuery):
     kb = [
@@ -233,7 +219,10 @@ async def back_to_start(callback: CallbackQuery):
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
         for row in BUTTONS
     ]
-    keyboard.append([InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu")])
+    keyboard.append([
+        InlineKeyboardButton(text=MENU_BUTTON_TEXT, callback_data="main_menu"),
+        InlineKeyboardButton(text="ℹ️ About", callback_data="show_about"),
+    ])
     mention = f'<a href="tg://user?id={callback.from_user.id}">{html.escape(callback.from_user.full_name)}</a>'
     body = MESSAGE_TEXT.format(user=mention)
     await edit_smart(callback.message, body, InlineKeyboardMarkup(inline_keyboard=keyboard), parse_mode="HTML")
