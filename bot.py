@@ -60,7 +60,10 @@ BUTTONS = [
 # Har baar /start hone par inme se RANDOM ek image choose hogi.
 START_IMAGES = os.environ.get(
     'PICS',
-    'https://i.ibb.co/wNcw3tMY/photo-2026-08-29-04-38-12-7679308298687873056.jpg '
+    'https://i.ibb.co/ccWd1db5/photo-2026-01-04-09-51-53-7591442205638656024.jpg '
+    'https://i.ibb.co/38fQNmF/photo-2026-01-04-09-52-40-7591442536351137808.jpg '
+    'https://i.ibb.co/TBLBcL8j/photo-2026-01-04-09-52-16-7591442102559440916.jpg '
+    'https://i.ibb.co/1J0BK84k/photo-2026-01-04-09-52-26-7591442712444796944.jpg'
 ).split()
 
 # /start ke neeche jo custom menu button dikhega, uska naam yaha se change karo
@@ -517,6 +520,32 @@ async def collect_input(message: Message):
         del user_states[uid]
         return
 
+    if step == "editing_name":
+        if not message.text:
+            await message.answer("⚠️ Naya naam TEXT me bhejo:")
+            return
+        i = state["editing_index"]
+        _, url, style = state["buttons"][i]
+        state["buttons"][i] = (message.text, url, style)
+        state["step"] = "ask_more"
+        text, markup = preview_view(state)
+        await message.answer("✅ Naam update ho gaya!")
+        await message.answer(text, reply_markup=markup)
+        return
+
+    if step == "editing_url":
+        if not message.text or not message.text.strip().startswith("http"):
+            await message.answer("⚠️ URL http:// ya https:// se shuru honi chahiye. Dobara bhejo:")
+            return
+        i = state["editing_index"]
+        name, _, style = state["buttons"][i]
+        state["buttons"][i] = (name, message.text.strip(), style)
+        state["step"] = "ask_more"
+        text, markup = preview_view(state)
+        await message.answer("✅ URL update ho gaya!")
+        await message.answer(text, reply_markup=markup)
+        return
+
     if step == "text":
         # message.html_text formatting preserve karta hai jo user ne apply ki ho
         # (bold, italic, spoiler, quote, code/copy-able block, wagera).
@@ -591,13 +620,8 @@ async def handle_color(callback: CallbackQuery):
 
     state["buttons"].append((state["current_name"], state["current_url"], style))
     state["step"] = "ask_more"
-    await callback.message.edit_text(
-        f"✅ Button '{state['current_name']}' add ho gaya.\n\nAur button add karna hai?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="➕ Haan, aur button", callback_data="more_yes"),
-            InlineKeyboardButton(text="✅ Nahi, post banao", callback_data="more_no"),
-        ]])
-    )
+    text, markup = ask_more_view(state)
+    await callback.message.edit_text(text, reply_markup=markup)
     await callback.answer()
 
 
@@ -610,6 +634,167 @@ async def send_final_post(chat_id, state, markup, uid=None):
                               reply_markup=markup, parse_mode="HTML", has_spoiler=spoiler)
     else:
         await bot.send_message(chat_id, state["text"], reply_markup=markup, parse_mode="HTML")
+
+
+def ask_more_view(state):
+    """'Aur button add karna hai?' screen. Preview/Edit option tabhi dikhta hai
+    jab kam se kam ek button add ho chuka ho."""
+    count = len(state["buttons"])
+    kb = [[
+        InlineKeyboardButton(text="➕ Haan, aur button", callback_data="more_yes"),
+        InlineKeyboardButton(text="✅ Nahi, post banao", callback_data="more_no"),
+    ]]
+    if count:
+        kb.append([InlineKeyboardButton(text="📋 Preview/Edit Buttons", callback_data="preview_buttons")])
+    text = f"✅ Ab tak {count} button add ho chuke hain.\n\nAur button add karna hai?"
+    return text, InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+COLOR_EMOJI = {"success": "🟢", "primary": "🔵", "danger": "🔴", None: "⚪"}
+
+
+def preview_view(state):
+    """Ab tak ke saare buttons ki list, edit karne ke liye tap kiya ja sakta hai."""
+    kb = [
+        [InlineKeyboardButton(text=f"{COLOR_EMOJI.get(style, '⚪')} {name}", callback_data=f"editbtn_{i}")]
+        for i, (name, url, style) in enumerate(state["buttons"])
+    ]
+    kb.append([InlineKeyboardButton(text="⬅️ Back", callback_data="back_to_ask_more")])
+    return "📋 Ab tak ke buttons (edit karne ke liye tap karo):", InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+# ---------------------------------------------------------
+# Preview + Edit buttons
+# ---------------------------------------------------------
+@dp.callback_query(F.data == "preview_buttons")
+async def preview_buttons(callback: CallbackQuery):
+    state = user_states.get(callback.from_user.id)
+    if not state:
+        await callback.answer("Session expire ho gaya, /newpost dobara bhejo.", show_alert=True)
+        return
+    text, markup = preview_view(state)
+    await callback.message.edit_text(text, reply_markup=markup)
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "back_to_ask_more")
+async def back_to_ask_more(callback: CallbackQuery):
+    state = user_states.get(callback.from_user.id)
+    if not state:
+        await callback.answer("Session expire ho gaya, /newpost dobara bhejo.", show_alert=True)
+        return
+    state["step"] = "ask_more"
+    text, markup = ask_more_view(state)
+    await callback.message.edit_text(text, reply_markup=markup)
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("editbtn_"))
+async def edit_button_menu(callback: CallbackQuery):
+    state = user_states.get(callback.from_user.id)
+    i = int(callback.data.split("_", 1)[1])
+    if not state or i >= len(state["buttons"]):
+        await callback.answer("Button nahi mila.", show_alert=True)
+        return
+    name, url, style = state["buttons"][i]
+    kb = [
+        [InlineKeyboardButton(text="✏️ Naam Edit", callback_data=f"editname_{i}")],
+        [InlineKeyboardButton(text="🔗 URL Edit", callback_data=f"editurl_{i}")],
+        [InlineKeyboardButton(text="🎨 Color Edit", callback_data=f"editcolor_{i}")],
+        [InlineKeyboardButton(text="❌ Remove", callback_data=f"removebtn_{i}")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="preview_buttons")],
+    ]
+    await callback.message.edit_text(
+        f"Naam: {name}\nURL: {url}\nColor: {COLOR_EMOJI.get(style, '⚪')}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("editname_"))
+async def editname_start(callback: CallbackQuery):
+    uid = callback.from_user.id
+    i = int(callback.data.split("_", 1)[1])
+    state = user_states.get(uid)
+    if not state or i >= len(state["buttons"]):
+        await callback.answer("Button nahi mila.", show_alert=True)
+        return
+    state["step"] = "editing_name"
+    state["editing_index"] = i
+    await callback.message.edit_text("✏️ Naya NAAM bhejo is button ke liye:")
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("editurl_"))
+async def editurl_start(callback: CallbackQuery):
+    uid = callback.from_user.id
+    i = int(callback.data.split("_", 1)[1])
+    state = user_states.get(uid)
+    if not state or i >= len(state["buttons"]):
+        await callback.answer("Button nahi mila.", show_alert=True)
+        return
+    state["step"] = "editing_url"
+    state["editing_index"] = i
+    await callback.message.edit_text("🔗 Naya URL bhejo (https:// se shuru hona chahiye):")
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("editcolor_"))
+async def editcolor_menu(callback: CallbackQuery):
+    i = int(callback.data.split("_", 1)[1])
+    kb = [
+        [InlineKeyboardButton(text="🟢 Green", callback_data=f"applycolor_{i}_success")],
+        [InlineKeyboardButton(text="🔵 Blue", callback_data=f"applycolor_{i}_primary")],
+        [InlineKeyboardButton(text="🔴 Red", callback_data=f"applycolor_{i}_danger")],
+        [InlineKeyboardButton(text="⚪ Default", callback_data=f"applycolor_{i}_none")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data=f"editbtn_{i}")],
+    ]
+    await callback.message.edit_text("🎨 Naya COLOR choose karo:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await callback.answer()
+
+
+@dp.callback_query(F.data.startswith("applycolor_"))
+async def apply_color_edit(callback: CallbackQuery):
+    state = user_states.get(callback.from_user.id)
+    _, i, color = callback.data.split("_", 2)
+    i = int(i)
+    if not state or i >= len(state["buttons"]):
+        await callback.answer("Button nahi mila.", show_alert=True)
+        return
+    style = None if color == "none" else color
+    name, url, _ = state["buttons"][i]
+    state["buttons"][i] = (name, url, style)
+    await callback.answer("✅ Color update ho gaya!")
+    # wapas edit-menu dikhao, updated color ke saath
+    await edit_button_menu_render(callback, state, i)
+
+
+async def edit_button_menu_render(callback, state, i):
+    name, url, style = state["buttons"][i]
+    kb = [
+        [InlineKeyboardButton(text="✏️ Naam Edit", callback_data=f"editname_{i}")],
+        [InlineKeyboardButton(text="🔗 URL Edit", callback_data=f"editurl_{i}")],
+        [InlineKeyboardButton(text="🎨 Color Edit", callback_data=f"editcolor_{i}")],
+        [InlineKeyboardButton(text="❌ Remove", callback_data=f"removebtn_{i}")],
+        [InlineKeyboardButton(text="⬅️ Back", callback_data="preview_buttons")],
+    ]
+    await callback.message.edit_text(
+        f"Naam: {name}\nURL: {url}\nColor: {COLOR_EMOJI.get(style, '⚪')}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+
+
+@dp.callback_query(F.data.startswith("removebtn_"))
+async def remove_button(callback: CallbackQuery):
+    state = user_states.get(callback.from_user.id)
+    i = int(callback.data.split("_", 1)[1])
+    if not state or i >= len(state["buttons"]):
+        await callback.answer("Button nahi mila.", show_alert=True)
+        return
+    state["buttons"].pop(i)
+    await callback.answer("✅ Button remove ho gaya!")
+    text, markup = preview_view(state)
+    await callback.message.edit_text(text, reply_markup=markup)
 
 
 # ---------------------------------------------------------
