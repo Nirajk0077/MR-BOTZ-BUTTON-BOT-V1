@@ -255,7 +255,7 @@ async def menu_addchannel(callback: CallbackQuery):
 @dp.callback_query(F.data == "cancel_addchannel")
 async def cancel_addchannel(callback: CallbackQuery):
     user_states.pop(callback.from_user.id, None)
-    await back_to_start(callback)
+    await menu_channels(callback)
 
 
 @dp.callback_query(F.data.startswith("manage_channel_"))
