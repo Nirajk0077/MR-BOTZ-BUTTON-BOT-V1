@@ -40,6 +40,15 @@ from motor.motor_asyncio import AsyncIOMotorClient
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")   # @BotFather se
 MONGO_URI = os.environ.get("MONGO_URI", "")   # MongoDB connection string (optional par recommended)
 
+# Jis channel me bot ki activity logs (new user, deploy/restart) bhejni hain.
+# Bot us channel me ADMIN hona chahiye. ID -100 se shuru hoti hai. Khaali chhodo to logs off.
+LOG_CHANNEL_ID = os.environ.get("LOG_CHANNEL_ID", "").strip()
+
+# Sirf inn Telegram user IDs ko /broadcast aur /stats jaise admin-only commands
+# use karne dena hai (comma se separate karke, jaise "123456789,987654321").
+# Apni ID pata karne ke liye @userinfobot ko /start karo.
+ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip().lstrip("-").isdigit()}
+
 import html
 
 # Saara customizable TEXT script.py se aata hai.
@@ -81,6 +90,46 @@ CONNECTED_CHANNELS = {}
 
 channels_collection = None  # MongoDB connect hone ke baad set hoga
 settings_collection = None  # MongoDB connect hone ke baad set hoga (Caption Format + Image Spoiler)
+users_collection = None     # MongoDB connect hone ke baad set hoga (broadcast/stats ke liye)
+
+# Bot ko ab tak jitne users ne /start kiya hai (memory cache, MongoDB se load hota hai)
+ALL_USERS = set()
+
+
+async def send_log(text):
+    """LOG_CHANNEL_ID set hai to wahan message bhejta hai (fail ho to silently ignore)."""
+    if not LOG_CHANNEL_ID:
+        return
+    try:
+        await bot.send_message(int(LOG_CHANNEL_ID), text, parse_mode="HTML")
+    except Exception as e:
+        print(f"⚠️ Log channel me message nahi bhej paya: {e}")
+
+
+async def track_user(user):
+    """Naya user hai to save karo aur log channel me bata do."""
+    if user.id in ALL_USERS:
+        return
+    ALL_USERS.add(user.id)
+    if users_collection is not None:
+        try:
+            await users_collection.update_one(
+                {"user_id": user.id},
+                {"$set": {"user_id": user.id, "name": user.full_name, "username": user.username}},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"⚠️ User DB me save nahi ho paya: {e}")
+
+    mention = f'<a href="tg://user?id={user.id}">{html.escape(user.full_name)}</a>'
+    username_line = f"@{user.username}" if user.username else "N/A"
+    await send_log(
+        f"🆕 <b>New User Started Bot</b>\n"
+        f"👤 Name: {mention}\n"
+        f"🔗 Username: {username_line}\n"
+        f"🆔 ID: <code>{user.id}</code>\n"
+        f"📊 Total Users: {len(ALL_USERS)}"
+    )
 
 # User ne apna caption format kya choose kiya hai (Quote/Mono/Spoiler/None)
 # Structure: { user_id: "quote" | "mono" | "spoiler" | None }
@@ -93,6 +142,22 @@ USER_IMAGE_SPOILER = {}
 # User ek line me kitne buttons chahta hai (1-4), None = default (1 per line)
 # Structure: { user_id: 1 | 2 | 3 | 4 | None }
 USER_BUTTONS_PER_ROW = {}
+
+
+def is_admin(user_id):
+    return bool(ADMIN_IDS) and user_id in ADMIN_IDS
+
+
+async def get_chat_link(chat_id):
+    """Public ho to @username link, private ho to invite link banane ki koshish karta hai."""
+    try:
+        chat = await bot.get_chat(chat_id)
+        if chat.username:
+            return f"https://t.me/{chat.username}"
+        link = await bot.create_chat_invite_link(chat_id)
+        return link.invite_link
+    except Exception:
+        return None
 
 
 def chunk_buttons(buttons, per_row):
@@ -158,10 +223,10 @@ async def send_start_view(chat_id, prefix="", user=None):
 
 
 async def init_db():
-    """MongoDB se connect karo aur pehle se saved channels + settings memory me load karo."""
-    global channels_collection, settings_collection
+    """MongoDB se connect karo aur pehle se saved channels + settings + users memory me load karo."""
+    global channels_collection, settings_collection, users_collection
     if not MONGO_URI:
-        print("⚠️ MONGO_URI nahi diya gaya - channels/settings sirf memory me rahenge "
+        print("⚠️ MONGO_URI nahi diya gaya - channels/settings/users sirf memory me rahenge "
               "(restart hone par dobara set karna padega).")
         return
 
@@ -170,6 +235,7 @@ async def init_db():
         db = client["telegram_bot"]
         channels_collection = db["channels"]
         settings_collection = db["user_settings"]
+        users_collection = db["users"]
 
         count = 0
         async for doc in channels_collection.find():
@@ -184,10 +250,15 @@ async def init_db():
             USER_BUTTONS_PER_ROW[doc["user_id"]] = doc.get("buttons_per_row")
             settings_count += 1
 
-        print(f"✅ MongoDB connect ho gaya. {count} saved channel(s), {settings_count} user setting(s) load ho gaye.")
+        user_count = 0
+        async for doc in users_collection.find():
+            ALL_USERS.add(doc["user_id"])
+            user_count += 1
+
+        print(f"✅ MongoDB connect ho gaya. {count} channel(s), {settings_count} setting(s), {user_count} user(s) load ho gaye.")
     except Exception as e:
         print(f"❌ MongoDB se connect nahi ho paya: {e}")
-        print("   Channels/settings sirf memory me rahenge (restart pe reset honge).")
+        print("   Channels/settings/users sirf memory me rahenge (restart pe reset honge).")
 
 
 # ---------------------------------------------------------
@@ -195,6 +266,7 @@ async def init_db():
 # ---------------------------------------------------------
 @dp.message(CommandStart())
 async def start(message: Message):
+    await track_user(message.from_user)
     await send_start_view(message.chat.id, user=message.from_user)
 
 
@@ -440,6 +512,81 @@ async def mychannels_cmd(message: Message):
     await message.answer(text)
 
 
+@dp.message(Command("stats"))
+async def stats_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("🚫 Ye command sirf admin use kar sakte hain.")
+        return
+
+    status_msg = await message.answer("⏳ Stats collect kar raha hoon...")
+
+    # Saare users ke connected channels/groups ko dedupe karke ek list banao
+    all_chats = {}
+    for uid, chats in CONNECTED_CHANNELS.items():
+        for c in chats:
+            all_chats[c["id"]] = c["title"]
+
+    lines = [
+        "📊 <b>Bot Stats</b>\n",
+        f"👥 Total Users: <b>{len(ALL_USERS)}</b>",
+        f"📢 Total Connected Channels/Groups: <b>{len(all_chats)}</b>\n",
+    ]
+
+    for chat_id, title in all_chats.items():
+        link = await get_chat_link(chat_id)
+        if link:
+            lines.append(f"• <a href=\"{link}\">{html.escape(title)}</a>")
+        else:
+            lines.append(f"• {html.escape(title)} (ID: <code>{chat_id}</code>)")
+
+    await status_msg.edit_text("\n".join(lines), parse_mode="HTML", disable_web_page_preview=True)
+
+
+@dp.message(Command("broadcast"))
+async def broadcast_cmd(message: Message):
+    if not is_admin(message.from_user.id):
+        await message.answer("🚫 Ye command sirf admin use kar sakte hain.")
+        return
+    user_states[message.from_user.id] = {"step": "broadcast_wait"}
+    await message.answer("📢 Jo bhi message broadcast karna hai wo bhejo (text, photo — jo bhi):")
+
+
+@dp.callback_query(F.data == "bcast_yes")
+async def broadcast_send(callback: CallbackQuery):
+    uid = callback.from_user.id
+    state = user_states.get(uid)
+    if not state or "broadcast_msg_id" not in state:
+        await callback.answer("Session expire ho gaya.", show_alert=True)
+        return
+
+    await callback.message.edit_text("⏳ Broadcast bhej raha hoon...")
+    success, failed = 0, 0
+    for target_id in list(ALL_USERS):
+        try:
+            await bot.copy_message(target_id, from_chat_id=state["broadcast_chat_id"], message_id=state["broadcast_msg_id"])
+            success += 1
+        except Exception:
+            failed += 1
+        await asyncio.sleep(0.05)  # Telegram flood limits se bachne ke liye
+
+    await callback.message.edit_text(
+        f"✅ <b>Broadcast Complete</b>\n\n"
+        f"👥 Total: {len(ALL_USERS)}\n"
+        f"✅ Success: {success}\n"
+        f"❌ Failed: {failed}",
+        parse_mode="HTML"
+    )
+    del user_states[uid]
+    await callback.answer()
+
+
+@dp.callback_query(F.data == "bcast_no")
+async def broadcast_cancel(callback: CallbackQuery):
+    user_states.pop(callback.from_user.id, None)
+    await callback.message.edit_text("❌ Broadcast cancel kar diya gaya.")
+    await callback.answer()
+
+
 # ---------------------------------------------------------
 # /newpost -- apna post banao
 # ---------------------------------------------------------
@@ -463,6 +610,18 @@ async def collect_input(message: Message):
 
     state = user_states[uid]
     step = state["step"]
+
+    if step == "broadcast_wait":
+        state["broadcast_chat_id"] = message.chat.id
+        state["broadcast_msg_id"] = message.message_id
+        await message.answer(
+            f"👀 Preview upar hai. Ye {len(ALL_USERS)} users ko bhej du?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✅ Haan, bhejo", callback_data="bcast_yes"),
+                InlineKeyboardButton(text="❌ Cancel", callback_data="bcast_no"),
+            ]])
+        )
+        return
 
     if step == "add_channel":
         if not (message.text or message.forward_origin):
@@ -933,6 +1092,11 @@ async def main():
     await init_db()
     print(f"✅ Bot start ho raha hai... (@{BOT_USERNAME})")
     print("   Telegram par apne bot ko /start bhejo.")
+    await send_log(
+        f"🚀 <b>Bot Deployed/Restarted</b>\n"
+        f"🤖 @{BOT_USERNAME}\n"
+        f"👥 Total Users: {len(ALL_USERS)}"
+    )
     await dp.start_polling(bot)
 
 
