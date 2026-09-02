@@ -23,13 +23,20 @@ Agar BOT_TOKEN missing hoga, bot clear error dega, crash nahi karega.
 import os
 import sys
 import asyncio
-import threading
 import random
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import hmac
+import hashlib
+import base64
+import urllib.parse
+from aiohttp import web
 
 from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, TelegramObject
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup,
+    TelegramObject, WebAppInfo, BufferedInputFile,
+)
 from aiogram.enums import ChatMemberStatus
 from aiogram.exceptions import TelegramBadRequest
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -48,6 +55,10 @@ LOG_CHANNEL_ID = os.environ.get("LOG_CHANNEL_ID", "").strip()
 # use karne dena hai (comma se separate karke, jaise "123456789,987654321").
 # Apni ID pata karne ke liye @userinfobot ko /start karo.
 ADMIN_IDS = {int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip().lstrip("-").isdigit()}
+
+# Mini App (Telegram WebApp) kaha hosted hai. Render deploy karne par ye apne aap
+# mil jata hai (RENDER_EXTERNAL_URL). Khud host kar rahe ho to yaha manually daal do.
+WEBAPP_BASE_URL = os.environ.get("RENDER_EXTERNAL_URL", os.environ.get("WEBAPP_BASE_URL", "")).rstrip("/")
 
 import html
 
@@ -131,6 +142,35 @@ async def track_user(user):
         f"📊 Total Users: {len(ALL_USERS)}"
     )
 
+
+async def track_user_dict(user: dict):
+    """Mini App (Telegram WebApp initData) se aaya plain JSON user object handle karta hai."""
+    uid = user.get("id")
+    if uid is None or uid in ALL_USERS:
+        return
+    ALL_USERS.add(uid)
+    full_name = " ".join(filter(None, [user.get("first_name"), user.get("last_name")])) or "Unknown"
+    username = user.get("username")
+    if users_collection is not None:
+        try:
+            await users_collection.update_one(
+                {"user_id": uid},
+                {"$set": {"user_id": uid, "name": full_name, "username": username}},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"⚠️ User DB me save nahi ho paya: {e}")
+
+    mention = f'<a href="tg://user?id={uid}">{html.escape(full_name)}</a>'
+    username_line = f"@{username}" if username else "N/A"
+    await send_log(
+        f"🆕 <b>New User Started Bot (Mini App)</b>\n"
+        f"👤 Name: {mention}\n"
+        f"🔗 Username: {username_line}\n"
+        f"🆔 ID: <code>{uid}</code>\n"
+        f"📊 Total Users: {len(ALL_USERS)}"
+    )
+
 # User ne apna caption format kya choose kiya hai (Quote/Mono/Spoiler/None)
 # Structure: { user_id: "quote" | "mono" | "spoiler" | None }
 USER_FORMAT = {}
@@ -195,6 +235,12 @@ async def send_start_view(chat_id, prefix="", user=None):
     keyboard = [
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
     ]
+
+    if WEBAPP_BASE_URL:
+        keyboard.append([InlineKeyboardButton(
+            text="🚀 Open Mini App",
+            web_app=WebAppInfo(url=f"{WEBAPP_BASE_URL}/app")
+        )])
 
     keyboard += [
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
@@ -297,6 +343,11 @@ async def back_to_start(callback: CallbackQuery):
     keyboard = [
         [InlineKeyboardButton(text="🔗 Connect Channel/Group", callback_data="menu_channels")],
     ]
+    if WEBAPP_BASE_URL:
+        keyboard.append([InlineKeyboardButton(
+            text="🚀 Open Mini App",
+            web_app=WebAppInfo(url=f"{WEBAPP_BASE_URL}/app")
+        )])
     keyboard += [
         [InlineKeyboardButton(text=text, url=url, style=style) for text, url, style in row]
         for row in BUTTONS
@@ -1062,27 +1113,196 @@ async def handle_postto(callback: CallbackQuery):
 
 
 # ---------------------------------------------------------
-# Render/Koyeb FREE Web Service ke liye dummy port
+# Mini App Backend -- Telegram WebApp ke liye REST API
 # ---------------------------------------------------------
-def run_dummy_server():
+def verify_init_data(init_data: str):
+    """Telegram WebApp 'initData' ko verify karta hai (HMAC signature check).
+    Valid hone par us user ka dict return karta hai, warna None."""
+    try:
+        parsed = dict(urllib.parse.parse_qsl(init_data, strict_parsing=True))
+        received_hash = parsed.pop("hash", None)
+        if not received_hash:
+            return None
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(parsed.items()))
+        secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
+        computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(computed_hash, received_hash):
+            return None
+        user_json = parsed.get("user")
+        return json.loads(user_json) if user_json else None
+    except Exception:
+        return None
+
+
+def _authed_user(body: dict):
+    return verify_init_data(body.get("initData", ""))
+
+
+async def handle_health(request):
+    return web.Response(text="Bot is running")
+
+
+async def handle_webapp_page(request):
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "webapp.html")
+        with open(path, "r", encoding="utf-8") as f:
+            return web.Response(text=f.read(), content_type="text/html")
+    except FileNotFoundError:
+        return web.Response(text="webapp.html not found next to bot.py", status=404)
+
+
+async def handle_api_me(request):
+    body = await request.json()
+    user = _authed_user(body)
+    if not user:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    uid = user["id"]
+    await track_user_dict(user)
+    return web.json_response({
+        "user": user,
+        "channels": CONNECTED_CHANNELS.get(uid, []),
+        "settings": {
+            "format": USER_FORMAT.get(uid),
+            "image_spoiler": USER_IMAGE_SPOILER.get(uid, False),
+            "buttons_per_row": USER_BUTTONS_PER_ROW.get(uid),
+        },
+    })
+
+
+async def handle_api_connect(request):
+    body = await request.json()
+    user = _authed_user(body)
+    if not user:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    uid = user["id"]
+    chat_ref = str(body.get("chat_ref", "")).strip()
+    if not chat_ref:
+        return web.json_response({"error": "Channel/Group username ya ID do."}, status=400)
+
+    try:
+        chat = await bot.get_chat(chat_ref)
+        bot_member = await bot.get_chat_member(chat.id, bot.id)
+
+        if chat.type == "channel":
+            if bot_member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+                return web.json_response({"error": "Bot is Channel me ADMIN nahi hai."}, status=400)
+        elif bot_member.status in (ChatMemberStatus.LEFT, ChatMemberStatus.KICKED):
+            return web.json_response({"error": "Bot is Group me add nahi hai."}, status=400)
+
+        user_member = await bot.get_chat_member(chat.id, uid)
+        if user_member.status not in (ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.CREATOR):
+            return web.json_response({"error": "Aap is Channel/Group me ADMIN nahi hain."}, status=403)
+
+        CONNECTED_CHANNELS.setdefault(uid, [])
+        if not any(c["id"] == chat.id for c in CONNECTED_CHANNELS[uid]):
+            CONNECTED_CHANNELS[uid].append({"id": chat.id, "title": chat.title})
+        if channels_collection is not None:
+            await channels_collection.update_one(
+                {"user_id": uid, "channel_id": chat.id},
+                {"$set": {"user_id": uid, "channel_id": chat.id, "title": chat.title}},
+                upsert=True,
+            )
+        return web.json_response({"ok": True, "channels": CONNECTED_CHANNELS[uid]})
+    except Exception as e:
+        return web.json_response({"error": f"Connect nahi ho paya: {e}"}, status=400)
+
+
+async def handle_api_remove(request):
+    body = await request.json()
+    user = _authed_user(body)
+    if not user:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    uid = user["id"]
+    chat_id = body.get("chat_id")
+    CONNECTED_CHANNELS[uid] = [c for c in CONNECTED_CHANNELS.get(uid, []) if c["id"] != chat_id]
+    if channels_collection is not None:
+        await channels_collection.delete_one({"user_id": uid, "channel_id": chat_id})
+    return web.json_response({"ok": True, "channels": CONNECTED_CHANNELS.get(uid, [])})
+
+
+async def handle_api_settings(request):
+    body = await request.json()
+    user = _authed_user(body)
+    if not user:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    uid = user["id"]
+    if "format" in body:
+        USER_FORMAT[uid] = body["format"]
+    if "image_spoiler" in body:
+        USER_IMAGE_SPOILER[uid] = bool(body["image_spoiler"])
+    if "buttons_per_row" in body:
+        USER_BUTTONS_PER_ROW[uid] = body["buttons_per_row"]
+    if settings_collection is not None:
+        await settings_collection.update_one(
+            {"user_id": uid},
+            {"$set": {
+                "user_id": uid,
+                "format": USER_FORMAT.get(uid),
+                "image_spoiler": USER_IMAGE_SPOILER.get(uid, False),
+                "buttons_per_row": USER_BUTTONS_PER_ROW.get(uid),
+            }},
+            upsert=True,
+        )
+    return web.json_response({"ok": True})
+
+
+async def handle_api_publish(request):
+    body = await request.json()
+    user = _authed_user(body)
+    if not user:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    uid = user["id"]
+
+    text = body.get("text", "")
+    buttons = body.get("buttons", [])  # [{name, url, style}]
+    per_row = body.get("buttons_per_row")
+    target = body.get("target_chat_id")  # "me" ya numeric chat id
+    photo_base64 = body.get("photo_base64")
+    spoiler = bool(body.get("spoiler", False))
+
+    if not target:
+        return web.json_response({"error": "Kis channel/group me post karna hai, wo batao."}, status=400)
+
+    button_tuples = [(b["name"], b["url"], b.get("style")) for b in buttons]
+    keyboard = [
+        [InlineKeyboardButton(text=n, url=u, style=s) for n, u, s in row]
+        for row in chunk_buttons(button_tuples, per_row)
+    ]
+    markup = InlineKeyboardMarkup(inline_keyboard=keyboard) if keyboard else None
+    chat_id = uid if target == "me" else int(target)
+
+    try:
+        if photo_base64:
+            photo_bytes = base64.b64decode(photo_base64.split(",")[-1])
+            file = BufferedInputFile(photo_bytes, filename="post.jpg")
+            await bot.send_photo(chat_id, photo=file, caption=text, reply_markup=markup,
+                                  parse_mode="HTML", has_spoiler=spoiler)
+        else:
+            await bot.send_message(chat_id, text, reply_markup=markup, parse_mode="HTML")
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"error": f"Post nahi ho paya: {e}"}, status=400)
+
+
+def build_web_app():
+    app = web.Application(client_max_size=15 * 1024 * 1024)  # photo uploads ke liye
+    app.router.add_get("/", handle_health)
+    app.router.add_get("/app", handle_webapp_page)
+    app.router.add_post("/api/me", handle_api_me)
+    app.router.add_post("/api/connect", handle_api_connect)
+    app.router.add_post("/api/remove", handle_api_remove)
+    app.router.add_post("/api/settings", handle_api_settings)
+    app.router.add_post("/api/publish", handle_api_publish)
+    return app
+
+
+async def start_web_server():
+    runner = web.AppRunner(build_web_app())
+    await runner.setup()
     port = int(os.environ.get("PORT", 8080))
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"Bot is running")
-
-        def do_HEAD(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-
-        def log_message(self, format, *args):
-            pass
-
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"🌐 Web server + Mini App backend chal raha hai port {port} par")
 
 
 async def main():
@@ -1090,7 +1310,12 @@ async def main():
     me = await bot.get_me()
     BOT_USERNAME = me.username
     await init_db()
+    await start_web_server()
     print(f"✅ Bot start ho raha hai... (@{BOT_USERNAME})")
+    if WEBAPP_BASE_URL:
+        print(f"🚀 Mini App: {WEBAPP_BASE_URL}/app")
+    else:
+        print("⚠️ WEBAPP_BASE_URL set nahi hai — Mini App button nahi dikhega.")
     print("   Telegram par apne bot ko /start bhejo.")
     await send_log(
         f"🚀 <b>Bot Deployed/Restarted</b>\n"
@@ -1101,5 +1326,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    threading.Thread(target=run_dummy_server, daemon=True).start()
     asyncio.run(main())
