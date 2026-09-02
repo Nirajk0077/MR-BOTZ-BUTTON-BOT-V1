@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Deendayal Button Bot</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0A0D16;
+    --nebula:#131829;
+    --glass:rgba(255,255,255,.055);
+    --glass-brd:rgba(255,255,255,.13);
+    --glass-brd-hi:rgba(255,255,255,.24);
+    --violet:#8B7CFF;
+    --cyan:#37E6D0;
+    --coral:#FF6B81;
+    --text-hi:#F3F5FC;
+    --text-mid:#9BA2B8;
+    --text-dim:#5C6478;
+    --green:#34C759;
+    --blue:#0A84FF;
+    --red:#FF453A;
+    --radius-lg:22px;
+    --radius-md:16px;
+    --radius-sm:11px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--void);
+    color:var(--text-hi);
+    font-family:'Inter',sans-serif;
+    overflow-x:hidden;
+    min-height:100vh;
+    position:relative;
+  }
+  h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif;}
+
+  /* ---------- aurora backdrop (one glow moment) ---------- */
+  .aurora{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none;}
+  .blob{position:absolute;border-radius:50%;filter:blur(70px);opacity:.38;}
+  .blob.a{width:260px;height:260px;background:var(--violet);top:-80px;left:-60px;animation:drift1 18s ease-in-out infinite;}
+  .blob.b{width:220px;height:220px;background:var(--cyan);top:60px;right:-70px;animation:drift2 22s ease-in-out infinite;}
+  .blob.c{width:200px;height:200px;background:var(--coral);bottom:120px;left:20%;opacity:.22;animation:drift1 26s ease-in-out infinite reverse;}
+  @keyframes drift1{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,40px)}}
+  @keyframes drift2{0%,100%{transform:translate(0,0)}50%{transform:translate(-25px,30px)}}
+
+  .app{position:relative;z-index:1;max-width:520px;margin:0 auto;padding:18px 16px 100px;min-height:100vh;}
+
+  /* ---------- header ---------- */
+  .header{display:flex;align-items:center;gap:12px;margin-bottom:20px;}
+  .avatar{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--violet),var(--cyan));
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;flex-shrink:0;
+    box-shadow:0 0 0 1px var(--glass-brd), 0 8px 24px -8px rgba(139,124,255,.5);}
+  .header .greet{font-size:13px;color:var(--text-mid);}
+  .header .name{font-size:17px;font-weight:600;letter-spacing:-.01em;}
+
+  /* ---------- glass card ---------- */
+  .glass{
+    background:var(--glass);
+    border:1px solid var(--glass-brd);
+    border-radius:var(--radius-lg);
+    backdrop-filter:blur(22px) saturate(140%);
+    -webkit-backdrop-filter:blur(22px) saturate(140%);
+  }
+  .card{padding:18px;margin-bottom:14px;}
+  .card-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);font-weight:600;margin-bottom:10px;}
+
+  /* ---------- screens ---------- */
+  .screen{display:none;animation:fadeIn .28s ease;}
+  .screen.active{display:block;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+  /* ---------- stat row (home) ---------- */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+  .stat{padding:16px;text-align:left;}
+  .stat .num{font-family:'Space Grotesk';font-size:28px;font-weight:700;line-height:1;background:linear-gradient(135deg,var(--violet),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .stat .lbl{font-size:12.5px;color:var(--text-mid);margin-top:6px;}
+
+  .quick{display:flex;flex-direction:column;gap:10px;}
+  .quick-btn{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:var(--radius-md);
+    border:1px solid var(--glass-brd);background:rgba(255,255,255,.03);cursor:pointer;transition:.15s;}
+  .quick-btn:active{transform:scale(.985);background:rgba(255,255,255,.07);}
+  .quick-btn .ic{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+  .quick-btn .tx{flex:1;}
+  .quick-btn .tx .t{font-weight:600;font-size:14.5px;}
+  .quick-btn .tx .s{font-size:12px;color:var(--text-mid);margin-top:2px;}
+  .quick-btn .arrow{color:var(--text-dim);font-size:16px;}
+
+  /* ---------- inputs ---------- */
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--text-mid);margin-bottom:7px;font-weight:500;}
+  input[type=text], textarea, select{
+    width:100%;background:rgba(255,255,255,.045);border:1px solid var(--glass-brd);
+    color:var(--text-hi);border-radius:var(--radius-sm);padding:12px 13px;font-size:14.5px;
+    font-family:inherit;outline:none;transition:.15s;
+  }
+  input:focus, textarea:focus{border-color:var(--glass-brd-hi);background:rgba(255,255,255,.07);}
+  textarea{resize:vertical;min-height:90px;line-height:1.5;}
+
+  .btn{
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    padding:13px 18px;border-radius:var(--radius-sm);font-weight:600;font-size:14.5px;
+    border:1px solid var(--glass-brd);cursor:pointer;transition:.15s;background:rgba(255,255,255,.05);color:var(--text-hi);
+  }
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:linear-gradient(135deg,var(--violet),#6E5CE0);border-color:transparent;color:#fff;
+    box-shadow:0 8px 24px -8px rgba(139,124,255,.55);}
+  .btn.ghost{background:transparent;}
+  .btn.danger{color:var(--coral);}
+  .btn.block{width:100%;}
+  .btn.sm{padding:9px 12px;font-size:13px;}
+
+  /* ---------- chips ---------- */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{padding:9px 14px;border-radius:99px;border:1px solid var(--glass-brd);font-size:13px;font-weight:500;
+    color:var(--text-mid);cursor:pointer;transition:.15s;background:rgba(255,255,255,.03);}
+  .chip.active{color:var(--text-hi);border-color:var(--glass-brd-hi);background:rgba(255,255,255,.1);}
+  .chip.dot{display:flex;align-items:center;gap:7px;}
+  .chip .dot-color{width:8px;height:8px;border-radius:50%;}
+
+  /* ---------- channel row ---------- */
+  .chan-row{display:flex;align-items:center;gap:11px;padding:12px;border-radius:var(--radius-sm);
+    background:rgba(255,255,255,.03);border:1px solid var(--glass-brd);margin-bottom:8px;}
+  .chan-row .ic{width:34px;height:34px;border-radius:10px;background:rgba(139,124,255,.15);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .chan-row .t{flex:1;font-size:14px;font-weight:500;}
+  .chan-row .rm{color:var(--coral);font-size:18px;cursor:pointer;padding:4px 8px;}
+
+  /* ---------- toggle switch ---------- */
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;}
+  .toggle-row .t{font-size:14px;font-weight:500;}
+  .toggle-row .s{font-size:12px;color:var(--text-mid);margin-top:2px;}
+  .switch{width:44px;height:26px;border-radius:99px;background:rgba(255,255,255,.12);position:relative;cursor:pointer;transition:.2s;flex-shrink:0;}
+  .switch.on{background:linear-gradient(135deg,var(--violet),var(--cyan));}
+  .switch .knob{width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:.2s;box-shadow:0 2px 6px rgba(0,0,0,.3);}
+  .switch.on .knob{left:21px;}
+
+  /* ---------- button list (compose) ---------- */
+  .btn-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:var(--radius-sm);
+    background:rgba(255,255,255,.03);border:1px solid var(--glass-brd);margin-bottom:8px;}
+  .btn-item .swatch{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .btn-item .nm{flex:1;font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .btn-item .del{color:var(--text-dim);font-size:16px;cursor:pointer;padding:2px 6px;}
+
+  /* ---------- photo preview ---------- */
+  .photo-drop{border:1.5px dashed var(--glass-brd-hi);border-radius:var(--radius-md);padding:22px;text-align:center;
+    color:var(--text-mid);font-size:13px;cursor:pointer;position:relative;overflow:hidden;}
+  .photo-drop img{width:100%;border-radius:var(--radius-sm);display:block;}
+  .photo-drop.has-img{padding:0;border-style:solid;}
+
+  /* ---------- bottom tab bar ---------- */
+  .tabbar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:10;
+    display:flex;gap:4px;padding:8px;border-radius:20px;width:calc(100% - 32px);max-width:488px;
+    background:rgba(19,24,41,.72);border:1px solid var(--glass-brd);backdrop-filter:blur(24px) saturate(150%);
+    -webkit-backdrop-filter:blur(24px) saturate(150%);box-shadow:0 20px 50px -16px rgba(0,0,0,.6);}
+  .tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 4px;border-radius:14px;
+    color:var(--text-dim);cursor:pointer;transition:.18s;}
+  .tab .ic{font-size:19px;line-height:1;}
+  .tab .lb{font-size:10.5px;font-weight:600;}
+  .tab.active{color:var(--text-hi);background:rgba(255,255,255,.08);}
+
+  /* ---------- toast ---------- */
+  .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%) translateY(-60px);z-index:100;
+    padding:12px 20px;border-radius:14px;font-size:13.5px;font-weight:500;
+    background:rgba(19,24,41,.92);border:1px solid var(--glass-brd-hi);backdrop-filter:blur(20px);
+    transition:transform .3s cubic-bezier(.34,1.56,.64,1);max-width:88%;text-align:center;}
+  .toast.show{transform:translateX(-50%) translateY(0);}
+  .toast.err{border-color:rgba(255,107,129,.5);color:#FFB3BE;}
+  .toast.ok{border-color:rgba(55,230,208,.5);color:#B7F5EE;}
+
+  .empty{text-align:center;padding:26px 10px;color:var(--text-mid);font-size:13px;}
+  .empty .ic{font-size:30px;margin-bottom:8px;}
+
+  .section-gap{margin-top:18px;}
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+
+<div class="aurora"><div class="blob a"></div><div class="blob b"></div><div class="blob c"></div></div>
+
+<div class="app">
+
+  <div class="header">
+    <div class="avatar" id="avatar">D</div>
+    <div>
+      <div class="greet">Namaste 👋</div>
+      <div class="name" id="userName">Loading…</div>
+    </div>
+  </div>
+
+  <!-- ================= HOME ================= -->
+  <div class="screen active" id="screen-home">
+    <div class="stat-grid">
+      <div class="glass stat">
+        <div class="num" id="statChannels">0</div>
+        <div class="lbl">Connected Channels/Groups</div>
+      </div>
+      <div class="glass stat">
+        <div class="num" id="statFormat">—</div>
+        <div class="lbl">Caption Format</div>
+      </div>
+    </div>
+
+    <div class="glass card">
+      <div class="card-title">Quick Actions</div>
+      <div class="quick">
+        <div class="quick-btn" onclick="goTab('connect')">
+          <div class="ic" style="background:rgba(139,124,255,.18);">🔗</div>
+          <div class="tx"><div class="t">Connect Channel/Group</div><div class="s">Bot ko admin banao aur connect karo</div></div>
+          <div class="arrow">›</div>
+        </div>
+        <div class="quick-btn" onclick="goTab('compose')">
+          <div class="ic" style="background:rgba(55,230,208,.16);">📝</div>
+          <div class="tx"><div class="t">New Post</div><div class="s">Text, buttons, photo — sab kuch yahi se</div></div>
+          <div class="arrow">›</div>
+        </div>
+        <div class="quick-btn" onclick="goTab('settings')">
+          <div class="ic" style="background:rgba(255,107,129,.16);">⚙️</div>
+          <div class="tx"><div class="t">Settings</div><div class="s">Format, image aur layout preferences</div></div>
+          <div class="arrow">›</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= CONNECT ================= -->
+  <div class="screen" id="screen-connect">
+    <div class="glass card">
+      <div class="card-title">Add New</div>
+      <div class="field">
+        <label>Channel/Group username ya numeric ID</label>
+        <input type="text" id="chatRefInput" placeholder="@mychannel ya -1001234567890" />
+      </div>
+      <div class="btn primary block" onclick="connectChat()">Connect</div>
+      <div style="font-size:11.5px;color:var(--text-dim);margin-top:10px;line-height:1.5;">
+        Bot ko pehle us Channel me ADMIN, ya Group me MEMBER banao. Aap khud bhi us chat me admin hone chahiye.
+      </div>
+    </div>
+
+    <div class="glass card">
+      <div class="card-title">Connected (<span id="connCount">0</span>)</div>
+      <div id="channelList"></div>
+    </div>
+  </div>
+
+  <!-- ================= COMPOSE ================= -->
+  <div class="screen" id="screen-compose">
+    <div class="glass card">
+      <div class="card-title">Message</div>
+      <div class="field">
+        <label>Post text (default bold rahega)</label>
+        <textarea id="postText" placeholder="Apna message yaha likho…"></textarea>
+      </div>
+      <div class="field">
+        <label>Caption wrap</label>
+        <div class="chips" id="formatChips">
+          <div class="chip active" data-val="">Default</div>
+          <div class="chip" data-val="quote">❝ Quote</div>
+          <div class="chip" data-val="mono">🔤 Mono</div>
+          <div class="chip" data-val="spoiler">🙈 Spoiler</div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Photo (optional)</label>
+        <div class="photo-drop" id="photoDrop" onclick="document.getElementById('photoInput').click()">
+          <span id="photoPlaceholder">📷 Tap karke photo choose karo</span>
+          <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="onPhotoPick(event)"/>
+        </div>
+      </div>
+      <div class="toggle-row" id="spoilerToggleRow" style="display:none;">
+        <div><div class="t">Hide with Spoiler</div><div class="s">Photo blur rahegi jab tak tap na kare</div></div>
+        <div class="switch" id="spoilerSwitch" onclick="toggleSwitch('spoilerSwitch')"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <div class="glass card">
+      <div class="card-title">Buttons</div>
+      <div id="buttonList"></div>
+      <div class="field" style="margin-top:6px;">
+        <input type="text" id="btnName" placeholder="Button ka naam (jaise Website)" style="margin-bottom:8px;"/>
+        <input type="text" id="btnUrl" placeholder="https://…" style="margin-bottom:10px;"/>
+        <div class="chips" id="colorChips" style="margin-bottom:10px;">
+          <div class="chip dot active" data-color="success"><span class="dot-color" style="background:#34C759"></span>Green</div>
+          <div class="chip dot" data-color="primary"><span class="dot-color" style="background:#0A84FF"></span>Blue</div>
+          <div class="chip dot" data-color="danger"><span class="dot-color" style="background:#FF453A"></span>Red</div>
+          <div class="chip dot" data-color=""><span class="dot-color" style="background:#8B93A8"></span>Default</div>
+        </div>
+        <div class="btn ghost block" onclick="addButton()">➕ Add Button</div>
+      </div>
+      <div class="field section-gap">
+        <label>Buttons per line</label>
+        <div class="chips" id="perRowChips">
+          <div class="chip active" data-val="">Default</div>
+          <div class="chip" data-val="1">1</div>
+          <div class="chip" data-val="2">2</div>
+          <div class="chip" data-val="3">3</div>
+          <div class="chip" data-val="4">4</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="glass card">
+      <div class="card-title">Publish To</div>
+      <select id="targetSelect"><option value="me">📩 Mujhe (Saved Messages)</option></select>
+      <div class="btn primary block section-gap" onclick="publishPost()" id="publishBtn">🚀 Publish Post</div>
+    </div>
+  </div>
+
+  <!-- ================= SETTINGS ================= -->
+  <div class="screen" id="screen-settings">
+    <div class="glass card">
+      <div class="card-title">Default Caption Format</div>
+      <div class="chips" id="settFormatChips">
+        <div class="chip active" data-val="">Default</div>
+        <div class="chip" data-val="quote">❝ Quote</div>
+        <div class="chip" data-val="mono">🔤 Mono</div>
+        <div class="chip" data-val="spoiler">🙈 Spoiler</div>
+      </div>
+    </div>
+
+    <div class="glass card">
+      <div class="toggle-row">
+        <div><div class="t">Default Image Spoiler</div><div class="s">Naye posts me photo default hide rahe</div></div>
+        <div class="switch" id="settSpoilerSwitch" onclick="toggleSettSpoiler()"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <div class="glass card">
+      <div class="card-title">Default Buttons Per Line</div>
+      <div class="chips" id="settPerRowChips">
+        <div class="chip active" data-val="">Default</div>
+        <div class="chip" data-val="1">1</div>
+        <div class="chip" data-val="2">2</div>
+        <div class="chip" data-val="3">3</div>
+        <div class="chip" data-val="4">4</div>
+      </div>
+    </div>
+
+    <div class="glass card" style="text-align:center;">
+      <div style="font-size:22px;margin-bottom:6px;">🤖</div>
+      <div style="font-weight:600;font-size:14.5px;">Deendayal Button Bot</div>
+      <div style="font-size:12px;color:var(--text-mid);margin-top:4px;">aiogram · MongoDB · Render</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="tabbar">
+  <div class="tab active" data-tab="home" onclick="goTab('home')"><div class="ic">🏠</div><div class="lb">Home</div></div>
+  <div class="tab" data-tab="connect" onclick="goTab('connect')"><div class="ic">🔗</div><div class="lb">Connect</div></div>
+  <div class="tab" data-tab="compose" onclick="goTab('compose')"><div class="ic">📝</div><div class="lb">Compose</div></div>
+  <div class="tab" data-tab="settings" onclick="goTab('settings')"><div class="ic">⚙️</div><div class="lb">Settings</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const initData = tg?.initData || "";
+const tgUser = tg?.initDataUnsafe?.user || {first_name:"Guest"};
+
+let STATE = {
+  channels: [],
+  settings: {format:null, image_spoiler:false, buttons_per_row:null},
+  composeButtons: [],
+  composeFormat: "",
+  composePerRow: "",
+  photoBase64: null,
+  spoilerOn: false,
+};
+
+// ---------- helpers ----------
+function haptic(type){ try{ tg?.HapticFeedback?.impactOccurred(type||'light'); }catch(e){} }
+
+function toast(msg, kind){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (kind ? ' '+kind : '');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(()=> el.classList.remove('show'), 2600);
+}
+
+async function api(path, body={}){
+  const res = await fetch(path, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({initData, ...body})
+  });
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok) throw new Error(data.error || 'Kuch galat ho gaya');
+  return data;
+}
+
+function goTab(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.querySelector(`.tab[data-tab="${name}"]`).classList.add('active');
+  haptic('light');
+}
+
+function chipGroup(containerId, onPick){
+  const el = document.getElementById(containerId);
+  el.querySelectorAll('.chip').forEach(chip=>{
+    chip.onclick = ()=>{
+      el.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));
+      chip.classList.add('active');
+      onPick(chip.dataset.val !== undefined ? chip.dataset.val : chip.dataset.color);
+      haptic('light');
+    };
+  });
+}
+
+function toggleSwitch(id){
+  const el = document.getElementById(id);
+  el.classList.toggle('on');
+  STATE.spoilerOn = el.classList.contains('on');
+  haptic('light');
+}
+
+function toggleSettSpoiler(){
+  const el = document.getElementById('settSpoilerSwitch');
+  el.classList.toggle('on');
+  saveSettings({image_spoiler: el.classList.contains('on')});
+}
+
+// ---------- load ----------
+async function loadMe(){
+  try{
+    const data = await api('/api/me');
+    const u = data.user || tgUser;
+    document.getElementById('userName').textContent = [u.first_name,u.last_name].filter(Boolean).join(' ') || 'Friend';
+    document.getElementById('avatar').textContent = (u.first_name||'D')[0].toUpperCase();
+
+    STATE.channels = data.channels || [];
+    STATE.settings = data.settings || {};
+
+    renderChannels();
+    renderTargetSelect();
+    document.getElementById('statChannels').textContent = STATE.channels.length;
+    document.getElementById('statFormat').textContent = STATE.settings.format ? STATE.settings.format[0].toUpperCase()+STATE.settings.format.slice(1) : 'Default';
+    document.getElementById('connCount').textContent = STATE.channels.length;
+
+    if(STATE.settings.image_spoiler) document.getElementById('settSpoilerSwitch').classList.add('on');
+    const fmtMap = {"":0,"quote":1,"mono":2,"spoiler":3};
+    setActiveChip('settFormatChips', STATE.settings.format || "");
+    setActiveChip('settPerRowChips', STATE.settings.buttons_per_row ? String(STATE.settings.buttons_per_row) : "");
+  }catch(e){
+    toast(e.message, 'err');
+  }
+}
+
+function setActiveChip(containerId, val){
+  const el = document.getElementById(containerId);
+  el.querySelectorAll('.chip').forEach(c=>{
+    c.classList.toggle('active', (c.dataset.val||"") === (val||""));
+  });
+}
+
+// ---------- connect screen ----------
+function renderChannels(){
+  const list = document.getElementById('channelList');
+  if(!STATE.channels.length){
+    list.innerHTML = `<div class="empty"><div class="ic">📭</div>Abhi koi channel/group connect nahi hai.</div>`;
+    return;
+  }
+  list.innerHTML = STATE.channels.map(c => `
+    <div class="chan-row">
+      <div class="ic">📢</div>
+      <div class="t">${escapeHtml(c.title)}</div>
+      <div class="rm" onclick="removeChat(${c.id})">✕</div>
+    </div>`).join('');
+}
+
+async function connectChat(){
+  const input = document.getElementById('chatRefInput');
+  const val = input.value.trim();
+  if(!val) return toast('Username ya ID daalo', 'err');
+  try{
+    const data = await api('/api/connect', {chat_ref: val});
+    STATE.channels = data.channels;
+    input.value = '';
+    renderChannels(); renderTargetSelect();
+    document.getElementById('connCount').textContent = STATE.channels.length;
+    document.getElementById('statChannels').textContent = STATE.channels.length;
+    toast('✅ Connect ho gaya!', 'ok');
+    haptic('medium');
+  }catch(e){ toast(e.message, 'err'); }
+}
+
+async function removeChat(chatId){
+  try{
+    const data = await api('/api/remove', {chat_id: chatId});
+    STATE.channels = data.channels;
+    renderChannels(); renderTargetSelect();
+    document.getElementById('connCount').textContent = STATE.channels.length;
+    document.getElementById('statChannels').textContent = STATE.channels.length;
+    toast('Remove ho gaya');
+  }catch(e){ toast(e.message, 'err'); }
+}
+
+// ---------- compose screen ----------
+chipGroup('formatChips', v => STATE.composeFormat = v);
+chipGroup('perRowChips', v => STATE.composePerRow = v);
+chipGroup('colorChips', v => window._pickedColor = v);
+window._pickedColor = 'success';
+
+function addButton(){
+  const name = document.getElementById('btnName').value.trim();
+  const url = document.getElementById('btnUrl').value.trim();
+  if(!name || !url) return toast('Naam aur URL dono chahiye', 'err');
+  if(!/^https?:\/\//i.test(url)) return toast('URL http:// se shuru honi chahiye', 'err');
+  STATE.composeButtons.push({name, url, style: window._pickedColor || null});
+  document.getElementById('btnName').value = '';
+  document.getElementById('btnUrl').value = '';
+  renderButtonList();
+  haptic('light');
+}
+
+function removeButton(i){
+  STATE.composeButtons.splice(i,1);
+  renderButtonList();
+}
+
+function renderButtonList(){
+  const el = document.getElementById('buttonList');
+  const colorHex = {success:'#34C759', primary:'#0A84FF', danger:'#FF453A', null:'#8B93A8', undefined:'#8B93A8'};
+  if(!STATE.composeButtons.length){ el.innerHTML=''; return; }
+  el.innerHTML = STATE.composeButtons.map((b,i)=>`
+    <div class="btn-item">
+      <div class="swatch" style="background:${colorHex[b.style]||'#8B93A8'}"></div>
+      <div class="nm">${escapeHtml(b.name)}</div>
+      <div class="del" onclick="removeButton(${i})">✕</div>
+    </div>`).join('');
+}
+
+function onPhotoPick(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    STATE.photoBase64 = reader.result;
+    const drop = document.getElementById('photoDrop');
+    drop.classList.add('has-img');
+    drop.innerHTML = `<img src="${reader.result}"/>`;
+    document.getElementById('spoilerToggleRow').style.display = 'flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderTargetSelect(){
+  const sel = document.getElementById('targetSelect');
+  sel.innerHTML = '<option value="me">📩 Mujhe (Saved Messages)</option>' +
+    STATE.channels.map(c=>`<option value="${c.id}">📢 ${escapeHtml(c.title)}</option>`).join('');
+}
+
+async function publishPost(){
+  const text = document.getElementById('postText').value.trim();
+  if(!text && !STATE.photoBase64) return toast('Text ya photo daalo', 'err');
+  const target = document.getElementById('targetSelect').value;
+  const btn = document.getElementById('publishBtn');
+  btn.textContent = '⏳ Publishing…';
+
+  let finalText = escapeHtml(text);
+  if(STATE.composeFormat === 'quote') finalText = `<blockquote>${finalText}</blockquote>`;
+  else if(STATE.composeFormat === 'mono') finalText = `<code>${finalText}</code>`;
+  else if(STATE.composeFormat === 'spoiler') finalText = `<tg-spoiler>${finalText}</tg-spoiler>`;
+  finalText = `<b>${finalText}</b>`;
+
+  try{
+    await api('/api/publish', {
+      text: finalText,
+      buttons: STATE.composeButtons,
+      buttons_per_row: STATE.composePerRow ? parseInt(STATE.composePerRow) : null,
+      target_chat_id: target,
+      photo_base64: STATE.photoBase64,
+      spoiler: STATE.spoilerOn,
+    });
+    toast('🎉 Post publish ho gaya!', 'ok');
+    haptic('medium');
+    resetCompose();
+  }catch(e){
+    toast(e.message, 'err');
+  }finally{
+    btn.textContent = '🚀 Publish Post';
+  }
+}
+
+function resetCompose(){
+  document.getElementById('postText').value = '';
+  STATE.composeButtons = [];
+  STATE.photoBase64 = null;
+  STATE.spoilerOn = false;
+  renderButtonList();
+  const drop = document.getElementById('photoDrop');
+  drop.classList.remove('has-img');
+  drop.innerHTML = '<span id="photoPlaceholder">📷 Tap karke photo choose karo</span>';
+  document.getElementById('spoilerToggleRow').style.display = 'none';
+  document.getElementById('spoilerSwitch').classList.remove('on');
+}
+
+// ---------- settings screen ----------
+chipGroup('settFormatChips', v => saveSettings({format: v || null}));
+chipGroup('settPerRowChips', v => saveSettings({buttons_per_row: v ? parseInt(v) : null}));
+
+async function saveSettings(payload){
+  try{
+    await api('/api/settings', payload);
+    toast('✅ Setting save ho gayi', 'ok');
+  }catch(e){ toast(e.message, 'err'); }
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+loadMe();
+</script>
+</body>
+</html>
