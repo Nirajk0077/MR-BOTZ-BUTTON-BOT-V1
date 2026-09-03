@@ -206,6 +206,21 @@
       </div>
     </div>
 
+    <div class="card-title" style="margin:2px 2px 10px;">Bot Status</div>
+    <div class="stat-grid">
+      <div class="glass stat">
+        <div class="num" id="statUsers">0</div>
+        <div class="lbl">Total Users</div>
+      </div>
+      <div class="glass stat">
+        <div class="num" id="statLive" style="display:flex;align-items:center;gap:7px;font-size:18px;">
+          <span style="width:9px;height:9px;border-radius:50%;background:var(--cyan);box-shadow:0 0 8px var(--cyan);display:inline-block;"></span>
+          Live
+        </div>
+        <div class="lbl" id="statUptime">Uptime —</div>
+      </div>
+    </div>
+
     <div class="glass card">
       <div class="card-title">Quick Actions</div>
       <div class="quick">
@@ -448,6 +463,10 @@ async function loadMe(){
     document.getElementById('statFormat').textContent = STATE.settings.format ? STATE.settings.format[0].toUpperCase()+STATE.settings.format.slice(1) : 'Default';
     document.getElementById('connCount').textContent = STATE.channels.length;
 
+    const bs = data.bot_stats || {};
+    document.getElementById('statUsers').textContent = bs.total_users ?? 0;
+    document.getElementById('statUptime').textContent = 'Uptime ' + formatUptime(bs.uptime_seconds || 0) + ' · ' + (bs.total_chats ?? 0) + ' chats connected';
+
     if(STATE.settings.image_spoiler) document.getElementById('settSpoilerSwitch').classList.add('on');
     const fmtMap = {"":0,"quote":1,"mono":2,"spoiler":3};
     setActiveChip('settFormatChips', STATE.settings.format || "");
@@ -455,6 +474,16 @@ async function loadMe(){
   }catch(e){
     toast(e.message, 'err');
   }
+}
+
+function formatUptime(sec){
+  sec = Math.max(0, Math.floor(sec));
+  const d = Math.floor(sec/86400); sec -= d*86400;
+  const h = Math.floor(sec/3600); sec -= h*3600;
+  const m = Math.floor(sec/60);
+  if(d) return `${d}d ${h}h`;
+  if(h) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 function setActiveChip(containerId, val){
