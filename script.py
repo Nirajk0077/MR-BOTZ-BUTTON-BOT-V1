@@ -35,10 +35,10 @@ ABOUT_TEXT = (
     "★ <b>My Name</b> : Deendayal Button Bot\n"
     "★ <b>Developer</b> : Deendayal\n"
     "★ <b>Library</b> : aiogram\n"
-    "★ <b>Language</b> : Python 3\n"
-    "★ <b>Database</b> : MongoDB\n"
+    "★ <b>Language</b> : ᴘʏᴛʜᴏɴ 𝟹\n"
+    "★ <b>Database</b> : ᴍᴏɴɢᴏ ᴅʙ\n"
     "★ <b>Bot Server</b> : Render\n"
-    "★ <b>Build Status</b> : Stable\n"
+    "★ <b>Build Status</b> : ᴠ1.2[ ꜱᴛᴀʙʟᴇ ]\n"
     "━━━━━━━━━━━━━━━━"
 )
 
