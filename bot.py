@@ -25,6 +25,7 @@ import sys
 import asyncio
 import random
 import json
+import time
 import hmac
 import hashlib
 import base64
@@ -91,6 +92,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 BOT_USERNAME = ""  # startup par init_db se pehle fetch hoga
+START_TIME = time.time()  # bot kab start hua (uptime calculate karne ke liye)
 
 # User ke chat state track karne ke liye (memory me, restart hone par reset ho jayega)
 user_states = {}
@@ -1158,6 +1160,10 @@ async def handle_api_me(request):
         return web.json_response({"error": "unauthorized"}, status=401)
     uid = user["id"]
     await track_user_dict(user)
+
+    # Bot-wide stats (sabhi users ke liye same) — global dedup chat count
+    all_chat_ids = {c["id"] for chats in CONNECTED_CHANNELS.values() for c in chats}
+
     return web.json_response({
         "user": user,
         "channels": CONNECTED_CHANNELS.get(uid, []),
@@ -1165,6 +1171,11 @@ async def handle_api_me(request):
             "format": USER_FORMAT.get(uid),
             "image_spoiler": USER_IMAGE_SPOILER.get(uid, False),
             "buttons_per_row": USER_BUTTONS_PER_ROW.get(uid),
+        },
+        "bot_stats": {
+            "total_users": len(ALL_USERS),
+            "total_chats": len(all_chat_ids),
+            "uptime_seconds": time.time() - START_TIME,
         },
     })
 
