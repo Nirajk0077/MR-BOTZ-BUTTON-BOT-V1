@@ -452,10 +452,20 @@ async function loadMe(){
     const data = await api('/api/me');
     const u = data.user || tgUser;
     document.getElementById('userName').textContent = [u.first_name,u.last_name].filter(Boolean).join(' ') || 'Friend';
-    document.getElementById('avatar').textContent = (u.first_name||'D')[0].toUpperCase();
 
     STATE.channels = data.channels || [];
     STATE.settings = data.settings || {};
+
+    const avatarEl = document.getElementById('avatar');
+    if(u.photo_url){
+      avatarEl.textContent = '';
+      avatarEl.style.backgroundImage = `url("${u.photo_url}")`;
+      avatarEl.style.backgroundSize = 'cover';
+      avatarEl.style.backgroundPosition = 'center';
+    } else {
+      avatarEl.style.backgroundImage = 'none';
+      avatarEl.textContent = (u.first_name||'D')[0].toUpperCase();
+    }
 
     renderChannels();
     renderTargetSelect();
